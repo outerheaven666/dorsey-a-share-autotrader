@@ -1,0 +1,1 @@
+"""Financial red-flag checks."""

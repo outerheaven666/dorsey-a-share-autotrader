@@ -1,0 +1,11 @@
+symbol,name,industry,is_st,is_suspended
+600519.SH,Kweichow Moutai,Consumer,false,false
+000858.SZ,Wuliangye,Consumer,false,false
+600036.SH,China Merchants Bank,Finance,false,false
+000333.SZ,Midea Group,Home Appliance,false,false
+300750.SZ,CATL,New Energy,false,false
+600276.SH,Hengrui Medicine,Healthcare,false,false
+002415.SZ,Hikvision,Technology,false,false
+600000.SH,Warning Bank,Finance,false,false
+000001.SZ,Blocked ST,Finance,true,false
+002000.SZ,Suspended Sample,Manufacturing,false,true
