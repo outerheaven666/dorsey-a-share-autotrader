@@ -2,9 +2,9 @@
 
 A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
 
-Current phase: **MVP 1 / Research and Paper Trading**.
+Current phase: **MVP 2 / Research, Portfolio Construction, Paper Trading, and Local Backtesting**.
 
-This project does **not** perform real-money trading. The MVP only reads local sample CSV files, builds scores and a target portfolio, and runs a local paper broker simulation.
+This project does **not** perform real-money trading. The current version only reads local sample CSV files, builds scores and a target portfolio, runs paper broker simulation, and runs a local quarterly backtest.
 
 ## Scope
 
@@ -45,15 +45,11 @@ The MVP reads local CSV files from `data/sample/`.
 
 ### `stock_basic.csv`
 
-Required columns:
-
 ```text
 symbol,name,industry,is_st,is_suspended
 ```
 
 ### `financial_snapshot.csv`
-
-Required columns:
 
 ```text
 symbol,year,revenue,net_profit,operating_cash_flow,free_cash_flow,total_assets,total_liabilities,equity,accounts_receivable,inventory,goodwill,non_recurring_profit,roe,roic,gross_margin,net_margin,rd_expense,selling_expense
@@ -61,10 +57,24 @@ symbol,year,revenue,net_profit,operating_cash_flow,free_cash_flow,total_assets,t
 
 ### `market_snapshot.csv`
 
-Required columns:
-
 ```text
 symbol,trade_date,close_price,market_cap,pe,pb,ev_to_fcf,fcf_yield,dividend_yield
+```
+
+### `historical_market_snapshot.csv`
+
+Used by the quarterly backtest.
+
+```text
+symbol,trade_date,close_price,is_suspended,is_limit_up,is_limit_down
+```
+
+### `trading_calendar.csv`
+
+Used to mark quarterly rebalance dates.
+
+```text
+trade_date,is_rebalance_date
 ```
 
 ## CLI Usage
@@ -75,23 +85,10 @@ Generate stock scores:
 python -m dorsey_as run-score
 ```
 
-Output:
-
-```text
-data/output/scores.csv
-```
-
 Build a target portfolio:
 
 ```bash
 python -m dorsey_as build-portfolio
-```
-
-Output:
-
-```text
-data/output/scores.csv
-data/output/target_portfolio.csv
 ```
 
 Run one paper rebalance:
@@ -100,13 +97,10 @@ Run one paper rebalance:
 python -m dorsey_as paper-rebalance
 ```
 
-Output:
+Run the local quarterly backtest:
 
-```text
-data/output/scores.csv
-data/output/target_portfolio.csv
-data/output/paper_state.csv
-data/output/paper_trades.csv
+```bash
+python -m dorsey_as run-backtest
 ```
 
 Optional arguments:
@@ -115,6 +109,7 @@ Optional arguments:
 python -m dorsey_as --data-dir data/sample --output-dir data/output run-score
 python -m dorsey_as --data-dir data/sample --output-dir data/output build-portfolio
 python -m dorsey_as --data-dir data/sample --output-dir data/output paper-rebalance --cash 1000000
+python -m dorsey_as --data-dir data/sample --output-dir data/output run-backtest --cash 1000000
 ```
 
 ## Scoring Logic
@@ -152,17 +147,77 @@ Portfolio construction rules:
 * Max single stock weight is 5%.
 * Max single industry weight is 25%.
 
+## Backtesting
+
+The MVP 2 backtest is designed to validate the research and portfolio rules before any real trading work exists. It runs over local historical sample CSV data only.
+
+At each rebalance date, the engine:
+
+1. Loads sample fundamentals and historical market snapshots.
+2. Runs the scoring engine.
+3. Builds the target portfolio.
+4. Compares current simulated holdings with target weights.
+5. Generates simulated trades.
+6. Applies A-share trading restrictions.
+7. Deducts transaction costs.
+8. Updates cash and holdings.
+9. Marks positions to market.
+10. Writes the equity curve, trades, holdings, and metrics.
+
+Backtest outputs are written to `data/output/`, which is ignored by git:
+
+```text
+data/output/backtest_equity_curve.csv
+data/output/backtest_trades.csv
+data/output/backtest_holdings.csv
+data/output/backtest_metrics.csv
+```
+
+### Transaction Cost Assumptions
+
+Defaults:
+
+* Commission rate: `0.0003`.
+* Minimum commission: `5`.
+* Stamp duty on sell orders: `0.0005`.
+* Slippage rate: `0.001`.
+
+### A-Share Trading Restrictions
+
+The backtest applies these local simulation rules:
+
+* Suspended stocks cannot be bought or sold.
+* Limit-up stocks cannot be bought.
+* Limit-down stocks cannot be sold.
+* Unfilled trades are skipped and recorded with a reason.
+* Short selling is not allowed.
+* Cash cannot go below zero.
+* Position quantities cannot go below zero.
+
+### Backtest Metrics
+
+Implemented metrics:
+
+* Total return.
+* Annualized return.
+* Max drawdown.
+* Sharpe ratio.
+* Turnover.
+* Number of trades.
+* Win rate when sell trades exist.
+
 ## Safety Limits
 
 The MVP cannot place real orders.
 
-It contains no QMT adapter, no PTrade adapter, no real broker credentials, and no live trading mode. The only broker implementation is `PaperBroker`, which writes simulated orders to local CSV files.
+It contains no QMT adapter, no PTrade adapter, no real broker credentials, and no live trading mode. The only broker implementation is `PaperBroker`, which writes simulated orders to local CSV files. The backtest engine is also local simulation only.
 
-The system refuses to paper trade when:
+The system refuses or skips simulated trading when:
 
 * The target portfolio is empty.
 * A required market price is missing or invalid.
 * The paper account has insufficient simulated cash for generated buys.
+* A simulated trade violates suspension, limit-up, limit-down, no-short, or no-negative-cash constraints.
 
 ## Project Structure
 
@@ -191,19 +246,21 @@ data/
 
 * Only local sample CSV data is supported.
 * Factor formulas are deterministic MVP proxy rules, not optimized production models.
-* No backtesting engine is implemented yet.
+* The backtest uses simple quarterly sample data, not a full daily A-share dataset.
+* Rebalance-day valuation uses MVP proxy market assumptions for fields not present in the historical close-price file.
+* Win rate is only an MVP approximation.
 * No Feishu notification is implemented yet.
 * No real broker integration exists.
 * No live trading mode exists.
 
 ## Next Phase
 
-Recommended Phase 2 work:
+Recommended Phase 3 work:
 
-1. Add quarterly backtesting with transaction costs, stamp duty, slippage, suspended-stock handling, and limit-up/limit-down handling.
-2. Add equity curve, max drawdown, Sharpe ratio, turnover, and trade-log analytics.
-3. Add stricter data validation and stale-data checks before any paper rebalance.
-4. Add Feishu paper trading reports and risk alerts.
+1. Add stricter data validation and stale-data checks before paper rebalance and backtest.
+2. Add richer historical valuation inputs so each rebalance date can use point-in-time valuation data.
+3. Add Feishu paper trading reports, backtest summaries, and risk alerts.
+4. Add daily report generation and system health checks.
 5. Define broker adapter interfaces while keeping all live adapters disabled by default.
 
 ## Disclaimer

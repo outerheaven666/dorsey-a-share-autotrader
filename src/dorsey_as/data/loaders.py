@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from dorsey_as.backtest.models import HistoricalMarketSnapshot, TradingCalendarEntry
 from dorsey_as.models import FinancialSnapshot, MarketSnapshot, StockBasic
 
 
@@ -83,3 +84,31 @@ def load_sample_data(data_dir: Path) -> tuple[dict[str, StockBasic], dict[str, l
         load_financial_snapshots(data_dir / "financial_snapshot.csv"),
         load_market_snapshots(data_dir / "market_snapshot.csv"),
     )
+
+
+def load_historical_market_snapshots(path: Path) -> dict[str, dict[str, HistoricalMarketSnapshot]]:
+    grouped: dict[str, dict[str, HistoricalMarketSnapshot]] = {}
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            snapshot = HistoricalMarketSnapshot(
+                symbol=row["symbol"],
+                trade_date=row["trade_date"],
+                close_price=_as_float(row, "close_price"),
+                is_suspended=_as_bool(row.get("is_suspended", "false")),
+                is_limit_up=_as_bool(row.get("is_limit_up", "false")),
+                is_limit_down=_as_bool(row.get("is_limit_down", "false")),
+            )
+            grouped.setdefault(snapshot.trade_date, {})[snapshot.symbol] = snapshot
+    return grouped
+
+
+def load_trading_calendar(path: Path) -> list[TradingCalendarEntry]:
+    with path.open(newline="", encoding="utf-8") as fh:
+        rows = [
+            TradingCalendarEntry(
+                trade_date=row["trade_date"],
+                is_rebalance_date=_as_bool(row.get("is_rebalance_date", "false")),
+            )
+            for row in csv.DictReader(fh)
+        ]
+    return sorted(rows, key=lambda item: item.trade_date)

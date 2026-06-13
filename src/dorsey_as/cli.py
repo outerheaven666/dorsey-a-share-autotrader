@@ -4,6 +4,8 @@ import argparse
 import csv
 from pathlib import Path
 
+from dorsey_as.backtest.engine import BacktestEngine
+from dorsey_as.backtest.models import BacktestConfig
 from dorsey_as.broker.paper import PaperBroker
 from dorsey_as.config.defaults import DEFAULT_OUTPUT_DIR, DEFAULT_SAMPLE_DATA_DIR
 from dorsey_as.data.loaders import load_sample_data
@@ -105,6 +107,22 @@ def paper_rebalance(data_dir: Path, output_dir: Path, cash: float) -> Path:
     return output_dir / "paper_trades.csv"
 
 
+def run_backtest(data_dir: Path, output_dir: Path, cash: float) -> Path:
+    engine = BacktestEngine.from_sample_data(
+        data_dir=data_dir,
+        output_dir=output_dir,
+        config=BacktestConfig(initial_cash=cash),
+    )
+    result = engine.run()
+    print(
+        "Backtest complete: "
+        f"{len(result.equity_curve)} equity points, "
+        f"{len(result.trades)} trade records; "
+        f"wrote outputs to {output_dir}"
+    )
+    return output_dir / "backtest_equity_curve.csv"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m dorsey_as")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_SAMPLE_DATA_DIR)
@@ -115,6 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("build-portfolio", help="Generate a target portfolio from local sample CSV data.")
     paper = subparsers.add_parser("paper-rebalance", help="Run a local paper rebalance with no broker connection.")
     paper.add_argument("--cash", type=float, default=1_000_000.0)
+    backtest = subparsers.add_parser("run-backtest", help="Run quarterly local CSV backtest with paper-only simulated trades.")
+    backtest.add_argument("--cash", type=float, default=1_000_000.0)
     return parser
 
 
@@ -127,5 +147,7 @@ def main(argv: list[str] | None = None) -> None:
         build_portfolio(args.data_dir, args.output_dir)
     elif args.command == "paper-rebalance":
         paper_rebalance(args.data_dir, args.output_dir, args.cash)
+    elif args.command == "run-backtest":
+        run_backtest(args.data_dir, args.output_dir, args.cash)
     else:
         parser.error(f"unknown command: {args.command}")
