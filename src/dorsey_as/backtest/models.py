@@ -39,6 +39,7 @@ class BacktestConfig:
     minimum_commission: float = 5.0
     stamp_duty_rate: float = 0.0005
     slippage_rate: float = 0.001
+    risk_free_rate: float = 0.0
 
     def transaction_cost(self, side: str, quantity: float, price: float) -> TransactionCost:
         amount = abs(quantity) * price

@@ -15,6 +15,7 @@ from dorsey_as.backtest.models import (
     TradeValidation,
     TradingCalendarEntry,
 )
+from dorsey_as.config.models import DataQualityConfig, PortfolioConfig, ScoringConfig
 from dorsey_as.data.loaders import (
     load_financial_snapshots,
     load_historical_market_snapshots,
@@ -37,6 +38,9 @@ class BacktestEngine:
         historical_market: dict[str, dict[str, HistoricalMarketSnapshot]] | None = None,
         calendar: list[TradingCalendarEntry] | None = None,
         output_dir: Path | None = None,
+        scoring_config: ScoringConfig | None = None,
+        portfolio_config: PortfolioConfig | None = None,
+        data_quality_config: DataQualityConfig | None = None,
     ) -> None:
         self.config = config
         self.stocks = stocks or {}
@@ -44,6 +48,9 @@ class BacktestEngine:
         self.historical_market = historical_market or {}
         self.calendar = calendar or []
         self.output_dir = output_dir
+        self.scoring_config = scoring_config
+        self.portfolio_config = portfolio_config
+        self.data_quality_config = data_quality_config
         self.cash = config.initial_cash
         self.positions: dict[str, float] = {}
         self.cost_basis: dict[str, float] = {}
@@ -53,7 +60,15 @@ class BacktestEngine:
         self.audit_log: list[dict[str, str | int | bool]] = []
 
     @classmethod
-    def from_sample_data(cls, data_dir: Path, output_dir: Path, config: BacktestConfig | None = None) -> "BacktestEngine":
+    def from_sample_data(
+        cls,
+        data_dir: Path,
+        output_dir: Path,
+        config: BacktestConfig | None = None,
+        scoring_config: ScoringConfig | None = None,
+        portfolio_config: PortfolioConfig | None = None,
+        data_quality_config: DataQualityConfig | None = None,
+    ) -> "BacktestEngine":
         return cls(
             config=config or BacktestConfig(),
             stocks=load_stock_basic(data_dir / "stock_basic.csv"),
@@ -61,6 +76,9 @@ class BacktestEngine:
             historical_market=load_historical_market_snapshots(data_dir / "historical_market_snapshot.csv"),
             calendar=load_trading_calendar(data_dir / "trading_calendar.csv"),
             output_dir=output_dir,
+            scoring_config=scoring_config,
+            portfolio_config=portfolio_config,
+            data_quality_config=data_quality_config,
         )
 
     def validate_trade(self, request: TradeRequest, snapshot: HistoricalMarketSnapshot) -> TradeValidation:
@@ -88,7 +106,7 @@ class BacktestEngine:
                 self._rebalance(entry.trade_date, market_by_symbol, as_of_override)
             self._mark_to_market(entry.trade_date, market_by_symbol)
 
-        metrics = calculate_metrics(self.equity_curve, self.trades)
+        metrics = calculate_metrics(self.equity_curve, self.trades, risk_free_rate=self.config.risk_free_rate)
         result = BacktestResult(self.equity_curve, self.trades, self.holdings, metrics)
         if self.output_dir is not None:
             self.write_outputs(result, self.output_dir)
@@ -129,6 +147,7 @@ class BacktestEngine:
             market_snapshots,
             historical_market={trade_date: market_by_symbol},
             calendar=self.calendar,
+            data_quality_config=self.data_quality_config,
         )
         self.audit_log.append(
             {
@@ -163,8 +182,8 @@ class BacktestEngine:
             )
             for symbol, snapshot in market_by_symbol.items()
         }
-        scores = calculate_scores(self.stocks, filter_financials_as_of(self.financials, as_of_date), market_snapshots)
-        target = build_target_portfolio(scores, self.stocks)
+        scores = calculate_scores(self.stocks, filter_financials_as_of(self.financials, as_of_date), market_snapshots, scoring_config=self.scoring_config)
+        target = build_target_portfolio(scores, self.stocks, portfolio_config=self.portfolio_config)
         self._execute_target_portfolio(trade_date, target, market_by_symbol)
 
     def _execute_target_portfolio(

@@ -25,7 +25,7 @@ def _daily_returns(equity_curve: list[EquityPoint]) -> list[float]:
     return returns
 
 
-def calculate_metrics(equity_curve: list[EquityPoint], trades: list[BacktestTrade]) -> BacktestMetrics:
+def calculate_metrics(equity_curve: list[EquityPoint], trades: list[BacktestTrade], risk_free_rate: float = 0.0) -> BacktestMetrics:
     if not equity_curve:
         return BacktestMetrics(0.0, 0.0, 0.0, 0.0, 0.0, 0, None)
 
@@ -36,8 +36,10 @@ def calculate_metrics(equity_curve: list[EquityPoint], trades: list[BacktestTrad
     annualized_return = (1.0 + total_return) ** (252.0 / periods) - 1.0 if total_return > -1.0 else -1.0
     returns = _daily_returns(equity_curve)
     if len(returns) > 1:
-        mean_return = sum(returns) / len(returns)
-        variance = sum((value - mean_return) ** 2 for value in returns) / (len(returns) - 1)
+        daily_risk_free = risk_free_rate / 252.0
+        excess_returns = [value - daily_risk_free for value in returns]
+        mean_return = sum(excess_returns) / len(excess_returns)
+        variance = sum((value - mean_return) ** 2 for value in excess_returns) / (len(excess_returns) - 1)
         sharpe = mean_return / math.sqrt(variance) * math.sqrt(252.0) if variance > 0 else 0.0
     else:
         sharpe = 0.0

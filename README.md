@@ -2,28 +2,15 @@
 
 A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
 
-Current phase: **MVP 3 / Data Quality, Look-Ahead Protection, Paper Trading, and Local Backtesting**.
+Current phase: **MVP 4 / Configurable Research, Reporting, Paper Trading, and Local Backtesting**.
 
-This project does **not** perform real-money trading. The current version only reads local sample CSV files, checks data quality, builds scores and a target portfolio, runs paper broker simulation, and runs a local quarterly backtest.
+This project does **not** perform real-money trading. It only reads local sample CSV files, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, and generates Markdown reports.
 
-## Scope
+## Safety Statement
 
-The strategy converts Pat Dorsey's framework into deterministic, auditable rules:
+This system is for personal research, system development, paper trading, and backtest simulation only.
 
-1. Do your homework.
-2. Find economic moats.
-3. Require a margin of safety.
-4. Hold for the long term.
-5. Know when to sell.
-
-The moat framework uses four proxy categories:
-
-1. Intangible assets.
-2. Switching costs.
-3. Network effects.
-4. Cost advantages.
-
-This is a low-frequency fundamental quant system. It is not a short-term trading system, a technical-analysis strategy, or a high-frequency trading system.
+It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection, no QMT adapter, no PTrade adapter, no real broker credentials, and no live order placement path.
 
 ## Installation
 
@@ -34,109 +21,168 @@ python -m pip install -e ".[dev]"
 python -m pytest
 ```
 
+## Configuration
+
+Default configuration lives at:
+
+```text
+config/default.yaml
+```
+
+All CLI commands use this file when `--config` is not supplied. You can pass a custom config:
+
+```bash
+python -m dorsey_as run-backtest --config config/default.yaml
+```
+
+### Config Sections
+
+`scoring` controls composite score weights:
+
+```yaml
+scoring:
+  quality_weight: 0.35
+  moat_weight: 0.30
+  valuation_weight: 0.25
+  risk_weight: 0.10
+```
+
+Weights must be non-negative and sum to `1.0`.
+
+`portfolio` controls target portfolio constraints:
+
+```yaml
+portfolio:
+  max_positions: 20
+  max_stock_weight: 0.05
+  max_industry_weight: 0.25
+  cash_reserve: 0.05
+```
+
+`transaction_cost` controls simulated trade costs:
+
+```yaml
+transaction_cost:
+  commission_rate: 0.0003
+  minimum_commission: 5
+  stamp_duty_rate: 0.0005
+  slippage_rate: 0.001
+```
+
+`backtest` controls simulation assumptions:
+
+```yaml
+backtest:
+  initial_cash: 1000000
+  rebalance_frequency: quarterly
+  benchmark_symbol: ""
+  risk_free_rate: 0.0
+```
+
+`data_quality` controls validation behavior:
+
+```yaml
+data_quality:
+  stale_days_threshold: 450
+  severe_stale_days_threshold: 900
+  allow_stale_warning: true
+  block_on_missing_core_fields: true
+  block_on_lookahead_bias: true
+  block_on_severe_outlier: true
+```
+
+`report` controls Markdown report sections:
+
+```yaml
+report:
+  output_format: markdown
+  include_data_quality_summary: true
+  include_top_scores: true
+  include_trade_summary: true
+  include_backtest_metrics: true
+  include_holdings_snapshot: true
+```
+
+Invalid configs, such as missing files, negative fees, negative weights, or scoring weights that do not sum to `1.0`, are rejected before running.
+
 ## Sample Data
 
 The MVP reads local CSV files from `data/sample/`.
 
-### `stock_basic.csv`
-
 ```text
-symbol,name,industry,is_st,is_suspended
+stock_basic.csv
+financial_snapshot.csv
+market_snapshot.csv
+historical_market_snapshot.csv
+trading_calendar.csv
+data_quality_cases.csv
 ```
 
-### `financial_snapshot.csv`
+Financial snapshots include `report_date` and `disclosure_date`. At any `as_of_date`, the system may only use financial rows where:
 
 ```text
-symbol,year,revenue,net_profit,operating_cash_flow,free_cash_flow,total_assets,total_liabilities,equity,accounts_receivable,inventory,goodwill,non_recurring_profit,roe,roic,gross_margin,net_margin,rd_expense,selling_expense,report_date,disclosure_date
+disclosure_date <= as_of_date
 ```
 
-`report_date` is the accounting period end date. `disclosure_date` is the date when the financial data became available to the system.
-
-### `market_snapshot.csv`
-
-```text
-symbol,trade_date,close_price,market_cap,pe,pb,ev_to_fcf,fcf_yield,dividend_yield
-```
-
-### `historical_market_snapshot.csv`
-
-Used by the quarterly backtest.
-
-```text
-symbol,trade_date,close_price,is_suspended,is_limit_up,is_limit_down,volume,amount
-```
-
-### `trading_calendar.csv`
-
-Used to mark quarterly rebalance dates.
-
-```text
-trade_date,is_rebalance_date
-```
-
-### `data_quality_cases.csv`
-
-Documents sample data quality scenarios used by tests:
-
-```text
-case_name,symbol,as_of_date,expected_severity,expected_blocking,description
-```
+This protects scoring and backtesting from look-ahead bias.
 
 ## CLI Usage
 
-Check sample data quality:
+Check data quality:
 
 ```bash
-python -m dorsey_as check-data-quality
+python -m dorsey_as check-data-quality --config config/default.yaml
 ```
 
 Generate stock scores:
 
 ```bash
-python -m dorsey_as run-score
+python -m dorsey_as run-score --config config/default.yaml
 ```
 
 Build a target portfolio:
 
 ```bash
-python -m dorsey_as build-portfolio
+python -m dorsey_as build-portfolio --config config/default.yaml
 ```
 
 Run one paper rebalance:
 
 ```bash
-python -m dorsey_as paper-rebalance
+python -m dorsey_as paper-rebalance --config config/default.yaml
 ```
 
 Run the local quarterly backtest:
 
 ```bash
-python -m dorsey_as run-backtest
+python -m dorsey_as run-backtest --config config/default.yaml
 ```
 
-Optional arguments:
+Generate Markdown reports from existing CSV outputs:
 
 ```bash
-python -m dorsey_as --data-dir data/sample --output-dir data/output check-data-quality
-python -m dorsey_as --data-dir data/sample --output-dir data/output run-score
-python -m dorsey_as --data-dir data/sample --output-dir data/output build-portfolio
-python -m dorsey_as --data-dir data/sample --output-dir data/output paper-rebalance --cash 1000000
-python -m dorsey_as --data-dir data/sample --output-dir data/output run-backtest --cash 1000000
+python -m dorsey_as generate-report --config config/default.yaml
+```
+
+Global data/output overrides:
+
+```bash
+python -m dorsey_as --data-dir data/sample --output-dir data/output run-backtest --config config/default.yaml
 ```
 
 ## Data Quality Layer
 
-MVP 3 adds a blocking data quality gate before scoring, portfolio construction, paper rebalance, and each backtest rebalance date.
+The data quality gate runs before scoring, portfolio construction, paper rebalance, and each backtest rebalance date.
 
-The checks are:
+Checks include:
 
-* `DataAvailabilityCheck`: verifies required datasets are present.
-* `LookAheadBiasCheck`: prevents use of financial data disclosed after `as_of_date`.
-* `MissingValueCheck`: blocks missing core fields.
-* `StaleDataCheck`: warns when the latest valid disclosure is older than the stale threshold.
-* `OutlierCheck`: blocks invalid prices, market values, and severe financial anomalies.
+* Data availability.
+* Missing core fields.
+* Look-ahead bias via `disclosure_date`.
+* Stale financial data.
+* Severe outliers such as non-positive prices, invalid market cap, invalid PB, negative revenue, negative assets, invalid gross margin, and extreme net margin.
 
-If any blocking issue exists, the CLI stops before scoring or backtesting and writes:
+Output:
 
 ```text
 data/output/data_quality_report.csv
@@ -148,79 +194,49 @@ The backtest also writes:
 data/output/backtest_audit_log.csv
 ```
 
-### Look-Ahead Protection
+## Reports
 
-At any `as_of_date`, the system may only use financial rows where:
+MVP 4 generates readable Markdown reports in `data/output/`.
 
-```text
-disclosure_date <= as_of_date
-```
+`run_report.md` includes:
 
-If a financial row has an accounting `report_date` in the past but a `disclosure_date` later than `as_of_date`, it is treated as unavailable and recorded as a blocking look-ahead issue.
+* Run time.
+* Config path.
+* Data quality summary.
+* Blocking issue status.
+* Score row count.
+* Top 10 stock score summary.
+* Target portfolio summary.
+* PaperBroker simulated trade summary.
+* Safety statement.
 
-The scoring CLI uses the latest `market_snapshot.trade_date` as its default `as_of_date`. The backtest uses each rebalance date as the default `as_of_date`.
+`backtest_report.md` includes:
 
-### Stale Data
-
-Default stale threshold:
-
-```text
-450 days
-```
-
-Data older than this threshold produces a warning. Current MVP warnings do not block the flow unless they are also tied to a blocking availability, missing-value, look-ahead, or outlier issue.
-
-### Outlier Rules
-
-Blocking checks include:
-
-* `close_price <= 0`
-* `market_cap <= 0`
-* `pb <= 0`
-* `revenue < 0`
-* `total_assets < 0`
-* `total_liabilities < 0`
-* gross margin outside the configured reasonable range
-* extreme net margin
-
-Negative PE is recorded as a warning because it can be explained by loss-making companies.
-
-## Scoring Logic
-
-Red flags can block a stock. If a stock is blocked, `composite_score` is always `0`.
-
-```text
-composite_score =
-quality_score * 0.35
-+ moat_score * 0.30
-+ valuation_score * 0.25
-+ risk_score * 0.10
-```
-
-Portfolio construction rules:
-
-* Select top stocks by composite score, up to 20 positions.
-* Exclude blocked stocks.
-* Keep 5% cash reserve.
-* Max single stock weight is 5%.
-* Max single industry weight is 25%.
+* Backtest date range.
+* Rebalance count.
+* Initial cash and ending equity.
+* Total return, annualized return, max drawdown, Sharpe ratio, turnover, number of trades, and win rate.
+* Data quality warning and blocking issue counts.
+* Trading restriction summary.
+* Final holdings.
+* Safety statement.
 
 ## Backtesting
 
-The local backtest validates the research and portfolio rules before any real trading work exists.
+The local backtest validates research and portfolio rules before any real trading work exists.
 
 At each rebalance date, the engine:
 
 1. Runs data quality and look-ahead checks.
-2. Loads eligible point-in-time financial rows using `disclosure_date <= as_of_date`.
-3. Runs the scoring engine.
-4. Builds the target portfolio.
+2. Loads eligible point-in-time financial rows.
+3. Runs the configured scoring engine.
+4. Builds the configured target portfolio.
 5. Generates simulated trades.
 6. Applies A-share trading restrictions.
-7. Deducts transaction costs.
+7. Deducts configured transaction costs.
 8. Updates cash and holdings.
 9. Marks positions to market.
-10. Writes equity curve, trades, holdings, metrics, data quality report, and audit log.
+10. Writes CSV outputs and Markdown report.
 
 Backtest outputs:
 
@@ -230,58 +246,32 @@ data/output/backtest_trades.csv
 data/output/backtest_holdings.csv
 data/output/backtest_metrics.csv
 data/output/backtest_audit_log.csv
+data/output/backtest_report.md
 ```
-
-## Transaction Cost Assumptions
-
-Defaults:
-
-* Commission rate: `0.0003`.
-* Minimum commission: `5`.
-* Stamp duty on sell orders: `0.0005`.
-* Slippage rate: `0.001`.
-
-## A-Share Trading Restrictions
-
-The backtest applies these local simulation rules:
-
-* Suspended stocks cannot be bought or sold.
-* Limit-up stocks cannot be bought.
-* Limit-down stocks cannot be sold.
-* Unfilled trades are skipped and recorded with a reason.
-* Short selling is not allowed.
-* Cash cannot go below zero.
-* Position quantities cannot go below zero.
-
-## Safety Limits
-
-The MVP cannot place real orders.
-
-It contains no QMT adapter, no PTrade adapter, no real broker credentials, and no live trading mode. The only broker implementation is `PaperBroker`, which writes simulated orders to local CSV files. The backtest engine is also local simulation only.
 
 ## Current Limitations
 
 * Only local sample CSV data is supported.
-* Data quality rules are deterministic MVP guardrails, not a complete production data validation system.
+* Config parsing supports the simple YAML shape used by `config/default.yaml`.
+* Reports are Markdown only.
 * The backtest uses simple quarterly sample data, not a full daily A-share database.
 * Rebalance-day valuation uses MVP proxy market assumptions for fields not present in the historical close-price file.
-* Stale data currently warns but does not block by itself.
 * No Feishu notification is implemented yet.
 * No real broker integration exists.
 * No live trading mode exists.
 
 ## Next Phase
 
-Recommended Phase 4 work:
+Recommended Phase 5 work:
 
-1. Add point-in-time valuation data to historical snapshots.
-2. Add severity configuration for stale data and outlier checks.
-3. Add Feishu data quality reports, backtest summaries, and risk alerts.
-4. Add richer audit logs for every scoring, portfolio, risk, and simulated trade decision.
+1. Add richer point-in-time valuation data.
+2. Add HTML report export and charts.
+3. Add Feishu report delivery for paper and backtest summaries.
+4. Add deeper audit logs for every score, portfolio, risk, and simulated trade decision.
 5. Define broker adapter interfaces while keeping all live adapters disabled by default.
 
 ## Disclaimer
 
 This project is for personal research and system development only.
 
-It does not provide investment advice, does not guarantee returns, and does not support real-money trading in the MVP phase.
+It does not provide investment advice, does not guarantee returns, and does not support real-money trading.

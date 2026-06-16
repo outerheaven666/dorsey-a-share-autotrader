@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dorsey_as.config.models import PortfolioConfig
 from dorsey_as.models import PortfolioPosition, ScoreResult, StockBasic, TargetPortfolio
 
 
@@ -10,7 +11,13 @@ def build_target_portfolio(
     max_stock_weight: float = 0.05,
     max_industry_weight: float = 0.25,
     cash_reserve: float = 0.05,
+    portfolio_config: PortfolioConfig | None = None,
 ) -> TargetPortfolio:
+    if portfolio_config is not None:
+        max_positions = portfolio_config.max_positions
+        max_stock_weight = portfolio_config.max_stock_weight
+        max_industry_weight = portfolio_config.max_industry_weight
+        cash_reserve = portfolio_config.cash_reserve
     candidates = [
         score
         for score in sorted(scores, key=lambda item: item.composite_score, reverse=True)

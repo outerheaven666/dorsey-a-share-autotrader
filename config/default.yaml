@@ -1,0 +1,39 @@
+scoring:
+  quality_weight: 0.35
+  moat_weight: 0.30
+  valuation_weight: 0.25
+  risk_weight: 0.10
+
+portfolio:
+  max_positions: 20
+  max_stock_weight: 0.05
+  max_industry_weight: 0.25
+  cash_reserve: 0.05
+
+transaction_cost:
+  commission_rate: 0.0003
+  minimum_commission: 5
+  stamp_duty_rate: 0.0005
+  slippage_rate: 0.001
+
+backtest:
+  initial_cash: 1000000
+  rebalance_frequency: quarterly
+  benchmark_symbol: ""
+  risk_free_rate: 0.0
+
+data_quality:
+  stale_days_threshold: 450
+  severe_stale_days_threshold: 900
+  allow_stale_warning: true
+  block_on_missing_core_fields: true
+  block_on_lookahead_bias: true
+  block_on_severe_outlier: true
+
+report:
+  output_format: markdown
+  include_data_quality_summary: true
+  include_top_scores: true
+  include_trade_summary: true
+  include_backtest_metrics: true
+  include_holdings_snapshot: true
