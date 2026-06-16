@@ -16,7 +16,7 @@ def _as_float(row: dict[str, str], key: str) -> float:
 
 
 def load_stock_basic(path: Path) -> dict[str, StockBasic]:
-    with path.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8-sig") as fh:
         return {
             row["symbol"]: StockBasic(
                 symbol=row["symbol"],
@@ -31,7 +31,7 @@ def load_stock_basic(path: Path) -> dict[str, StockBasic]:
 
 def load_financial_snapshots(path: Path) -> dict[str, list[FinancialSnapshot]]:
     grouped: dict[str, list[FinancialSnapshot]] = {}
-    with path.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8-sig") as fh:
         for row in csv.DictReader(fh):
             snapshot = FinancialSnapshot(
                 symbol=row["symbol"],
@@ -53,6 +53,8 @@ def load_financial_snapshots(path: Path) -> dict[str, list[FinancialSnapshot]]:
                 net_margin=_as_float(row, "net_margin"),
                 rd_expense=_as_float(row, "rd_expense"),
                 selling_expense=_as_float(row, "selling_expense"),
+                report_date=row.get("report_date", ""),
+                disclosure_date=row.get("disclosure_date", ""),
             )
             grouped.setdefault(snapshot.symbol, []).append(snapshot)
     for rows in grouped.values():
@@ -61,7 +63,7 @@ def load_financial_snapshots(path: Path) -> dict[str, list[FinancialSnapshot]]:
 
 
 def load_market_snapshots(path: Path) -> dict[str, MarketSnapshot]:
-    with path.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8-sig") as fh:
         return {
             row["symbol"]: MarketSnapshot(
                 symbol=row["symbol"],
@@ -88,7 +90,7 @@ def load_sample_data(data_dir: Path) -> tuple[dict[str, StockBasic], dict[str, l
 
 def load_historical_market_snapshots(path: Path) -> dict[str, dict[str, HistoricalMarketSnapshot]]:
     grouped: dict[str, dict[str, HistoricalMarketSnapshot]] = {}
-    with path.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8-sig") as fh:
         for row in csv.DictReader(fh):
             snapshot = HistoricalMarketSnapshot(
                 symbol=row["symbol"],
@@ -97,13 +99,15 @@ def load_historical_market_snapshots(path: Path) -> dict[str, dict[str, Historic
                 is_suspended=_as_bool(row.get("is_suspended", "false")),
                 is_limit_up=_as_bool(row.get("is_limit_up", "false")),
                 is_limit_down=_as_bool(row.get("is_limit_down", "false")),
+                volume=_as_float(row, "volume"),
+                amount=_as_float(row, "amount"),
             )
             grouped.setdefault(snapshot.trade_date, {})[snapshot.symbol] = snapshot
     return grouped
 
 
 def load_trading_calendar(path: Path) -> list[TradingCalendarEntry]:
-    with path.open(newline="", encoding="utf-8") as fh:
+    with path.open(newline="", encoding="utf-8-sig") as fh:
         rows = [
             TradingCalendarEntry(
                 trade_date=row["trade_date"],

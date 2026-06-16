@@ -11,6 +11,8 @@ class HistoricalMarketSnapshot:
     is_suspended: bool = False
     is_limit_up: bool = False
     is_limit_down: bool = False
+    volume: float = 0.0
+    amount: float = 0.0
 
 
 @dataclass(frozen=True)

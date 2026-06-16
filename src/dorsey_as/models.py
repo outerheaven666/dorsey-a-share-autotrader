@@ -33,6 +33,8 @@ class FinancialSnapshot:
     net_margin: float
     rd_expense: float = 0.0
     selling_expense: float = 0.0
+    report_date: str = ""
+    disclosure_date: str = ""
 
 
 @dataclass(frozen=True)
