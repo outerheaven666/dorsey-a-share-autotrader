@@ -2,9 +2,9 @@
 
 A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
 
-Current phase: **MVP 2 / Research, Portfolio Construction, Paper Trading, and Local Backtesting**.
+Current phase: **MVP 3 / Data Quality, Look-Ahead Protection, Paper Trading, and Local Backtesting**.
 
-This project does **not** perform real-money trading. The current version only reads local sample CSV files, builds scores and a target portfolio, runs paper broker simulation, and runs a local quarterly backtest.
+This project does **not** perform real-money trading. The current version only reads local sample CSV files, checks data quality, builds scores and a target portfolio, runs paper broker simulation, and runs a local quarterly backtest.
 
 ## Scope
 
@@ -31,11 +31,6 @@ Use Python 3.11 or higher.
 
 ```bash
 python -m pip install -e ".[dev]"
-```
-
-Run tests:
-
-```bash
 python -m pytest
 ```
 
@@ -52,8 +47,10 @@ symbol,name,industry,is_st,is_suspended
 ### `financial_snapshot.csv`
 
 ```text
-symbol,year,revenue,net_profit,operating_cash_flow,free_cash_flow,total_assets,total_liabilities,equity,accounts_receivable,inventory,goodwill,non_recurring_profit,roe,roic,gross_margin,net_margin,rd_expense,selling_expense
+symbol,year,revenue,net_profit,operating_cash_flow,free_cash_flow,total_assets,total_liabilities,equity,accounts_receivable,inventory,goodwill,non_recurring_profit,roe,roic,gross_margin,net_margin,rd_expense,selling_expense,report_date,disclosure_date
 ```
+
+`report_date` is the accounting period end date. `disclosure_date` is the date when the financial data became available to the system.
 
 ### `market_snapshot.csv`
 
@@ -66,7 +63,7 @@ symbol,trade_date,close_price,market_cap,pe,pb,ev_to_fcf,fcf_yield,dividend_yiel
 Used by the quarterly backtest.
 
 ```text
-symbol,trade_date,close_price,is_suspended,is_limit_up,is_limit_down
+symbol,trade_date,close_price,is_suspended,is_limit_up,is_limit_down,volume,amount
 ```
 
 ### `trading_calendar.csv`
@@ -77,7 +74,21 @@ Used to mark quarterly rebalance dates.
 trade_date,is_rebalance_date
 ```
 
+### `data_quality_cases.csv`
+
+Documents sample data quality scenarios used by tests:
+
+```text
+case_name,symbol,as_of_date,expected_severity,expected_blocking,description
+```
+
 ## CLI Usage
+
+Check sample data quality:
+
+```bash
+python -m dorsey_as check-data-quality
+```
 
 Generate stock scores:
 
@@ -106,11 +117,73 @@ python -m dorsey_as run-backtest
 Optional arguments:
 
 ```bash
+python -m dorsey_as --data-dir data/sample --output-dir data/output check-data-quality
 python -m dorsey_as --data-dir data/sample --output-dir data/output run-score
 python -m dorsey_as --data-dir data/sample --output-dir data/output build-portfolio
 python -m dorsey_as --data-dir data/sample --output-dir data/output paper-rebalance --cash 1000000
 python -m dorsey_as --data-dir data/sample --output-dir data/output run-backtest --cash 1000000
 ```
+
+## Data Quality Layer
+
+MVP 3 adds a blocking data quality gate before scoring, portfolio construction, paper rebalance, and each backtest rebalance date.
+
+The checks are:
+
+* `DataAvailabilityCheck`: verifies required datasets are present.
+* `LookAheadBiasCheck`: prevents use of financial data disclosed after `as_of_date`.
+* `MissingValueCheck`: blocks missing core fields.
+* `StaleDataCheck`: warns when the latest valid disclosure is older than the stale threshold.
+* `OutlierCheck`: blocks invalid prices, market values, and severe financial anomalies.
+
+If any blocking issue exists, the CLI stops before scoring or backtesting and writes:
+
+```text
+data/output/data_quality_report.csv
+```
+
+The backtest also writes:
+
+```text
+data/output/backtest_audit_log.csv
+```
+
+### Look-Ahead Protection
+
+At any `as_of_date`, the system may only use financial rows where:
+
+```text
+disclosure_date <= as_of_date
+```
+
+If a financial row has an accounting `report_date` in the past but a `disclosure_date` later than `as_of_date`, it is treated as unavailable and recorded as a blocking look-ahead issue.
+
+The scoring CLI uses the latest `market_snapshot.trade_date` as its default `as_of_date`. The backtest uses each rebalance date as the default `as_of_date`.
+
+### Stale Data
+
+Default stale threshold:
+
+```text
+450 days
+```
+
+Data older than this threshold produces a warning. Current MVP warnings do not block the flow unless they are also tied to a blocking availability, missing-value, look-ahead, or outlier issue.
+
+### Outlier Rules
+
+Blocking checks include:
+
+* `close_price <= 0`
+* `market_cap <= 0`
+* `pb <= 0`
+* `revenue < 0`
+* `total_assets < 0`
+* `total_liabilities < 0`
+* gross margin outside the configured reasonable range
+* extreme net margin
+
+Negative PE is recorded as a warning because it can be explained by loss-making companies.
 
 ## Scoring Logic
 
@@ -124,21 +197,6 @@ quality_score * 0.35
 + risk_score * 0.10
 ```
 
-Implemented red-flag rules:
-
-* Block if at least two of the last three years have negative net profit.
-* Block if at least two of the last three years have negative operating cash flow.
-* Warn if average operating cash flow / net profit is below 0.6.
-* Warn if accounts receivable growth exceeds revenue growth by more than 20 percentage points.
-* Warn if inventory growth exceeds revenue growth by more than 20 percentage points.
-* Warn if goodwill / equity exceeds 30%.
-* Block if goodwill / equity exceeds 50%.
-* Warn if non-recurring profit / net profit exceeds 30%.
-* Block if non-recurring profit / net profit exceeds 50%.
-* Block if debt-to-asset ratio exceeds 75%.
-* Block ST stocks.
-* Block suspended stocks.
-
 Portfolio construction rules:
 
 * Select top stocks by composite score, up to 20 positions.
@@ -149,31 +207,32 @@ Portfolio construction rules:
 
 ## Backtesting
 
-The MVP 2 backtest is designed to validate the research and portfolio rules before any real trading work exists. It runs over local historical sample CSV data only.
+The local backtest validates the research and portfolio rules before any real trading work exists.
 
 At each rebalance date, the engine:
 
-1. Loads sample fundamentals and historical market snapshots.
-2. Runs the scoring engine.
-3. Builds the target portfolio.
-4. Compares current simulated holdings with target weights.
+1. Runs data quality and look-ahead checks.
+2. Loads eligible point-in-time financial rows using `disclosure_date <= as_of_date`.
+3. Runs the scoring engine.
+4. Builds the target portfolio.
 5. Generates simulated trades.
 6. Applies A-share trading restrictions.
 7. Deducts transaction costs.
 8. Updates cash and holdings.
 9. Marks positions to market.
-10. Writes the equity curve, trades, holdings, and metrics.
+10. Writes equity curve, trades, holdings, metrics, data quality report, and audit log.
 
-Backtest outputs are written to `data/output/`, which is ignored by git:
+Backtest outputs:
 
 ```text
 data/output/backtest_equity_curve.csv
 data/output/backtest_trades.csv
 data/output/backtest_holdings.csv
 data/output/backtest_metrics.csv
+data/output/backtest_audit_log.csv
 ```
 
-### Transaction Cost Assumptions
+## Transaction Cost Assumptions
 
 Defaults:
 
@@ -182,7 +241,7 @@ Defaults:
 * Stamp duty on sell orders: `0.0005`.
 * Slippage rate: `0.001`.
 
-### A-Share Trading Restrictions
+## A-Share Trading Restrictions
 
 The backtest applies these local simulation rules:
 
@@ -194,73 +253,31 @@ The backtest applies these local simulation rules:
 * Cash cannot go below zero.
 * Position quantities cannot go below zero.
 
-### Backtest Metrics
-
-Implemented metrics:
-
-* Total return.
-* Annualized return.
-* Max drawdown.
-* Sharpe ratio.
-* Turnover.
-* Number of trades.
-* Win rate when sell trades exist.
-
 ## Safety Limits
 
 The MVP cannot place real orders.
 
 It contains no QMT adapter, no PTrade adapter, no real broker credentials, and no live trading mode. The only broker implementation is `PaperBroker`, which writes simulated orders to local CSV files. The backtest engine is also local simulation only.
 
-The system refuses or skips simulated trading when:
-
-* The target portfolio is empty.
-* A required market price is missing or invalid.
-* The paper account has insufficient simulated cash for generated buys.
-* A simulated trade violates suspension, limit-up, limit-down, no-short, or no-negative-cash constraints.
-
-## Project Structure
-
-```text
-src/
-  dorsey_as/
-    data/
-    factors/
-    moat/
-    valuation/
-    risk/
-    portfolio/
-    backtest/
-    broker/
-    notify/
-    config/
-    utils/
-
-tests/
-
-data/
-  sample/
-```
-
 ## Current Limitations
 
 * Only local sample CSV data is supported.
-* Factor formulas are deterministic MVP proxy rules, not optimized production models.
-* The backtest uses simple quarterly sample data, not a full daily A-share dataset.
+* Data quality rules are deterministic MVP guardrails, not a complete production data validation system.
+* The backtest uses simple quarterly sample data, not a full daily A-share database.
 * Rebalance-day valuation uses MVP proxy market assumptions for fields not present in the historical close-price file.
-* Win rate is only an MVP approximation.
+* Stale data currently warns but does not block by itself.
 * No Feishu notification is implemented yet.
 * No real broker integration exists.
 * No live trading mode exists.
 
 ## Next Phase
 
-Recommended Phase 3 work:
+Recommended Phase 4 work:
 
-1. Add stricter data validation and stale-data checks before paper rebalance and backtest.
-2. Add richer historical valuation inputs so each rebalance date can use point-in-time valuation data.
-3. Add Feishu paper trading reports, backtest summaries, and risk alerts.
-4. Add daily report generation and system health checks.
+1. Add point-in-time valuation data to historical snapshots.
+2. Add severity configuration for stale data and outlier checks.
+3. Add Feishu data quality reports, backtest summaries, and risk alerts.
+4. Add richer audit logs for every scoring, portfolio, risk, and simulated trade decision.
 5. Define broker adapter interfaces while keeping all live adapters disabled by default.
 
 ## Disclaimer

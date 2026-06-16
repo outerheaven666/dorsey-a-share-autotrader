@@ -1,0 +1,7 @@
+case_name,symbol,as_of_date,expected_severity,expected_blocking,description
+normal,600519.SH,2026-06-14,info,false,Normal sample data should pass blocking checks.
+missing_price,TEST001.SZ,2026-06-14,error,true,Missing market close price should block scoring or backtest.
+future_disclosure,TEST002.SZ,2024-03-01,error,true,Financial data disclosed after as_of_date should block look-ahead usage.
+stale_data,TEST003.SZ,2025-12-31,warning,false,Old but internally valid financial disclosure should warn.
+abnormal_price,TEST004.SZ,2026-06-14,error,true,Non-positive close price should block.
+abnormal_financial,TEST005.SZ,2026-06-14,error,true,Negative revenue or invalid margins should block.

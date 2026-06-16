@@ -21,6 +21,8 @@ from dorsey_as.data.loaders import (
     load_stock_basic,
     load_trading_calendar,
 )
+from dorsey_as.data_quality.report import write_data_quality_report
+from dorsey_as.data_quality.validators import filter_financials_as_of, run_data_quality_checks
 from dorsey_as.models import MarketSnapshot, PortfolioPosition, TargetPortfolio
 from dorsey_as.portfolio.constructor import build_target_portfolio
 from dorsey_as.scoring import calculate_scores
@@ -48,6 +50,7 @@ class BacktestEngine:
         self.trades: list[BacktestTrade] = []
         self.equity_curve: list[EquityPoint] = []
         self.holdings: list[HoldingSnapshot] = []
+        self.audit_log: list[dict[str, str | int | bool]] = []
 
     @classmethod
     def from_sample_data(cls, data_dir: Path, output_dir: Path, config: BacktestConfig | None = None) -> "BacktestEngine":
@@ -74,14 +77,15 @@ class BacktestEngine:
             return TradeValidation(False, "invalid_side")
         return TradeValidation(True, "")
 
-    def run(self) -> BacktestResult:
+    def run(self, as_of_override: str | None = None) -> BacktestResult:
         if not self.calendar:
             raise ValueError("trading calendar is empty")
 
         for entry in self.calendar:
             market_by_symbol = self.historical_market.get(entry.trade_date, {})
             if entry.is_rebalance_date:
-                self._rebalance(entry.trade_date, market_by_symbol)
+                self._check_rebalance_data_quality(entry.trade_date, market_by_symbol, as_of_override)
+                self._rebalance(entry.trade_date, market_by_symbol, as_of_override)
             self._mark_to_market(entry.trade_date, market_by_symbol)
 
         metrics = calculate_metrics(self.equity_curve, self.trades)
@@ -90,7 +94,61 @@ class BacktestEngine:
             self.write_outputs(result, self.output_dir)
         return result
 
-    def _rebalance(self, trade_date: str, market_by_symbol: dict[str, HistoricalMarketSnapshot]) -> None:
+    def _market_snapshots_from_historical(
+        self,
+        trade_date: str,
+        market_by_symbol: dict[str, HistoricalMarketSnapshot],
+    ) -> dict[str, MarketSnapshot]:
+        return {
+            symbol: MarketSnapshot(
+                symbol=symbol,
+                trade_date=trade_date,
+                close_price=snapshot.close_price,
+                market_cap=snapshot.close_price * 100_000_000,
+                pe=20.0,
+                pb=2.0,
+                ev_to_fcf=15.0,
+                fcf_yield=0.06,
+                dividend_yield=0.02,
+            )
+            for symbol, snapshot in market_by_symbol.items()
+        }
+
+    def _check_rebalance_data_quality(
+        self,
+        trade_date: str,
+        market_by_symbol: dict[str, HistoricalMarketSnapshot],
+        as_of_override: str | None,
+    ) -> None:
+        as_of_date = as_of_override or trade_date
+        market_snapshots = self._market_snapshots_from_historical(trade_date, market_by_symbol)
+        report = run_data_quality_checks(
+            as_of_date,
+            self.stocks,
+            self.financials,
+            market_snapshots,
+            historical_market={trade_date: market_by_symbol},
+            calendar=self.calendar,
+        )
+        self.audit_log.append(
+            {
+                "trade_date": trade_date,
+                "event": "data_quality_check",
+                "passed": report.passed,
+                "blocking_issues": len(report.blocking_issues),
+                "warnings": len(report.warnings),
+            }
+        )
+        if self.output_dir is not None:
+            write_data_quality_report(report, self.output_dir / "data_quality_report.csv")
+            self._write_audit_log(self.output_dir / "backtest_audit_log.csv")
+        if not report.passed:
+            reasons = "; ".join(issue.message for issue in report.blocking_issues)
+            print(f"Backtest data quality check failed for {as_of_date}: {reasons}")
+            raise SystemExit(1)
+
+    def _rebalance(self, trade_date: str, market_by_symbol: dict[str, HistoricalMarketSnapshot], as_of_override: str | None = None) -> None:
+        as_of_date = as_of_override or trade_date
         market_snapshots = {
             symbol: MarketSnapshot(
                 symbol=symbol,
@@ -105,7 +163,7 @@ class BacktestEngine:
             )
             for symbol, snapshot in market_by_symbol.items()
         }
-        scores = calculate_scores(self.stocks, self.financials, market_snapshots)
+        scores = calculate_scores(self.stocks, filter_financials_as_of(self.financials, as_of_date), market_snapshots)
         target = build_target_portfolio(scores, self.stocks)
         self._execute_target_portfolio(trade_date, target, market_by_symbol)
 
@@ -246,6 +304,7 @@ class BacktestEngine:
         self._write_trades(result, output_dir / "backtest_trades.csv")
         self._write_holdings(result, output_dir / "backtest_holdings.csv")
         self._write_metrics(result, output_dir / "backtest_metrics.csv")
+        self._write_audit_log(output_dir / "backtest_audit_log.csv")
 
     def _write_equity_curve(self, result: BacktestResult, path: Path) -> None:
         with path.open("w", newline="", encoding="utf-8") as fh:
@@ -292,3 +351,10 @@ class BacktestEngine:
             writer.writeheader()
             for key, value in metrics.__dict__.items():
                 writer.writerow({"metric": key, "value": "" if value is None else value})
+
+    def _write_audit_log(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=["trade_date", "event", "passed", "blocking_issues", "warnings"])
+            writer.writeheader()
+            writer.writerows(self.audit_log)
