@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any
 
 from dorsey_as.backtest.models import HistoricalMarketSnapshot, TradingCalendarEntry
+from dorsey_as.config.models import DataQualityConfig
 from dorsey_as.data_quality.models import DataQualityIssue, DataQualityReport
 from dorsey_as.models import FinancialSnapshot, MarketSnapshot, StockBasic
 
@@ -73,7 +74,7 @@ class DataAvailabilityCheck:
 
 
 class LookAheadBiasCheck:
-    def run(self, as_of_date: str, financials: dict[str, list[FinancialSnapshot]]) -> list[DataQualityIssue]:
+    def run(self, as_of_date: str, financials: dict[str, list[FinancialSnapshot]], block_on_lookahead_bias: bool = True) -> list[DataQualityIssue]:
         issues: list[DataQualityIssue] = []
         as_of = _parse_date(as_of_date)
         for symbol, rows in financials.items():
@@ -85,7 +86,7 @@ class LookAheadBiasCheck:
                             "LookAheadBiasCheck",
                             "error",
                             f"financial report {row.report_date or row.year} disclosed at {row.disclosure_date} is after as_of_date {as_of_date}",
-                            blocking=True,
+                            blocking=block_on_lookahead_bias,
                             as_of_date=as_of_date,
                             symbol=symbol,
                             field="disclosure_date",
@@ -123,25 +124,26 @@ class MissingValueCheck:
         markets: dict[str, MarketSnapshot],
         historical_market: dict[str, dict[str, HistoricalMarketSnapshot]] | None = None,
         calendar: list[TradingCalendarEntry] | None = None,
+        block_on_missing_core_fields: bool = True,
     ) -> list[DataQualityIssue]:
         issues: list[DataQualityIssue] = []
         for symbol, stock in stocks.items():
-            issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, stock, self.stock_fields))
+            issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, stock, self.stock_fields, block_on_missing_core_fields))
         for symbol, rows in financials.items():
             for row in rows:
-                issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, row, self.financial_fields))
+                issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, row, self.financial_fields, block_on_missing_core_fields))
         for symbol, market in markets.items():
-            issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, market, self.market_fields))
+            issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, market, self.market_fields, block_on_missing_core_fields))
         if historical_market is not None:
             for day_rows in historical_market.values():
                 for symbol, snapshot in day_rows.items():
-                    issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, snapshot, self.historical_fields))
+                    issues.extend(self._check_object(as_of_date, "MissingValueCheck", symbol, snapshot, self.historical_fields, block_on_missing_core_fields))
         if calendar is not None:
             for entry in calendar:
-                issues.extend(self._check_object(as_of_date, "MissingValueCheck", "", entry, self.calendar_fields))
+                issues.extend(self._check_object(as_of_date, "MissingValueCheck", "", entry, self.calendar_fields, block_on_missing_core_fields))
         return issues
 
-    def _check_object(self, as_of_date: str, check_name: str, symbol: str, obj: object, names: list[str]) -> list[DataQualityIssue]:
+    def _check_object(self, as_of_date: str, check_name: str, symbol: str, obj: object, names: list[str], blocking: bool) -> list[DataQualityIssue]:
         issues: list[DataQualityIssue] = []
         available_fields = {field.name for field in fields(obj)}
         for name in names:
@@ -151,7 +153,7 @@ class MissingValueCheck:
                         check_name,
                         "error",
                         f"missing required field {name}",
-                        blocking=True,
+                        blocking=blocking,
                         as_of_date=as_of_date,
                         symbol=symbol,
                         field=name,
@@ -161,8 +163,10 @@ class MissingValueCheck:
 
 
 class StaleDataCheck:
-    def __init__(self, stale_days_threshold: int = 450) -> None:
+    def __init__(self, stale_days_threshold: int = 450, severe_stale_days_threshold: int = 900, allow_stale_warning: bool = True) -> None:
         self.stale_days_threshold = stale_days_threshold
+        self.severe_stale_days_threshold = severe_stale_days_threshold
+        self.allow_stale_warning = allow_stale_warning
 
     def run(self, as_of_date: str, financials: dict[str, list[FinancialSnapshot]]) -> list[DataQualityIssue]:
         issues: list[DataQualityIssue] = []
@@ -175,13 +179,25 @@ class StaleDataCheck:
             if not valid_disclosed:
                 continue
             age = (as_of - max(valid_disclosed)).days
-            if age > self.stale_days_threshold:
+            if age > self.severe_stale_days_threshold:
+                issues.append(
+                    _issue(
+                        "StaleDataCheck",
+                        "error",
+                        f"latest disclosure is {age} days old, severe threshold is {self.severe_stale_days_threshold}",
+                        blocking=True,
+                        as_of_date=as_of_date,
+                        symbol=symbol,
+                        field="disclosure_date",
+                    )
+                )
+            elif age > self.stale_days_threshold:
                 issues.append(
                     _issue(
                         "StaleDataCheck",
                         "warning",
                         f"latest disclosure is {age} days old, threshold is {self.stale_days_threshold}",
-                        blocking=False,
+                        blocking=not self.allow_stale_warning,
                         as_of_date=as_of_date,
                         symbol=symbol,
                         field="disclosure_date",
@@ -197,18 +213,19 @@ class OutlierCheck:
         financials: dict[str, list[FinancialSnapshot]],
         markets: dict[str, MarketSnapshot],
         historical_market: dict[str, dict[str, HistoricalMarketSnapshot]] | None = None,
+        block_on_severe_outlier: bool = True,
     ) -> list[DataQualityIssue]:
         issues: list[DataQualityIssue] = []
         for symbol, market in markets.items():
-            issues.extend(self._check_positive(as_of_date, symbol, "close_price", market.close_price))
-            issues.extend(self._check_positive(as_of_date, symbol, "market_cap", market.market_cap))
-            issues.extend(self._check_positive(as_of_date, symbol, "pb", market.pb))
+            issues.extend(self._check_positive(as_of_date, symbol, "close_price", market.close_price, block_on_severe_outlier))
+            issues.extend(self._check_positive(as_of_date, symbol, "market_cap", market.market_cap, block_on_severe_outlier))
+            issues.extend(self._check_positive(as_of_date, symbol, "pb", market.pb, block_on_severe_outlier))
             if market.pe < 0:
                 issues.append(_issue("OutlierCheck", "warning", "negative PE requires loss-making explanation", blocking=False, as_of_date=as_of_date, symbol=symbol, field="pe"))
         if historical_market is not None:
             for day_rows in historical_market.values():
                 for symbol, snapshot in day_rows.items():
-                    issues.extend(self._check_positive(as_of_date, symbol, "close_price", snapshot.close_price))
+                    issues.extend(self._check_positive(as_of_date, symbol, "close_price", snapshot.close_price, block_on_severe_outlier))
         for symbol, rows in financials.items():
             for row in rows:
                 for field_name in ["revenue", "total_assets", "total_liabilities"]:
@@ -219,19 +236,19 @@ class OutlierCheck:
                                 "OutlierCheck",
                                 "error",
                                 f"{field_name} is negative",
-                                blocking=True,
+                                blocking=block_on_severe_outlier,
                                 as_of_date=as_of_date,
                                 symbol=symbol,
                                 field=field_name,
                             )
                         )
                 if row.gross_margin < -0.5 or row.gross_margin > 1.0:
-                    issues.append(_issue("OutlierCheck", "error", "gross_margin is outside reasonable range", blocking=True, as_of_date=as_of_date, symbol=symbol, field="gross_margin"))
+                    issues.append(_issue("OutlierCheck", "error", "gross_margin is outside reasonable range", blocking=block_on_severe_outlier, as_of_date=as_of_date, symbol=symbol, field="gross_margin"))
                 if row.net_margin < -1.0 or row.net_margin > 1.0:
-                    issues.append(_issue("OutlierCheck", "error", "net_margin is extremely abnormal", blocking=True, as_of_date=as_of_date, symbol=symbol, field="net_margin"))
+                    issues.append(_issue("OutlierCheck", "error", "net_margin is extremely abnormal", blocking=block_on_severe_outlier, as_of_date=as_of_date, symbol=symbol, field="net_margin"))
         return issues
 
-    def _check_positive(self, as_of_date: str, symbol: str, field_name: str, value: Any) -> list[DataQualityIssue]:
+    def _check_positive(self, as_of_date: str, symbol: str, field_name: str, value: Any, blocking: bool = True) -> list[DataQualityIssue]:
         if _is_missing(value):
             return []
         if value <= 0:
@@ -240,7 +257,7 @@ class OutlierCheck:
                     "OutlierCheck",
                     "error",
                     f"{field_name} must be positive",
-                    blocking=True,
+                    blocking=blocking,
                     as_of_date=as_of_date,
                     symbol=symbol,
                     field=field_name,
@@ -257,13 +274,21 @@ def run_data_quality_checks(
     historical_market: dict[str, dict[str, HistoricalMarketSnapshot]] | None = None,
     calendar: list[TradingCalendarEntry] | None = None,
     stale_days_threshold: int = 450,
+    data_quality_config: DataQualityConfig | None = None,
 ) -> DataQualityReport:
+    config = data_quality_config or DataQualityConfig(stale_days_threshold=stale_days_threshold)
     issues: list[DataQualityIssue] = []
     issues.extend(DataAvailabilityCheck().run(as_of_date, stocks, financials, markets, historical_market, calendar))
-    issues.extend(MissingValueCheck().run(as_of_date, stocks, financials, markets, historical_market, calendar))
-    issues.extend(LookAheadBiasCheck().run(as_of_date, financials))
-    issues.extend(StaleDataCheck(stale_days_threshold).run(as_of_date, financials))
-    issues.extend(OutlierCheck().run(as_of_date, financials, markets, historical_market))
+    issues.extend(MissingValueCheck().run(as_of_date, stocks, financials, markets, historical_market, calendar, config.block_on_missing_core_fields))
+    issues.extend(LookAheadBiasCheck().run(as_of_date, financials, config.block_on_lookahead_bias))
+    issues.extend(
+        StaleDataCheck(
+            config.stale_days_threshold,
+            config.severe_stale_days_threshold,
+            config.allow_stale_warning,
+        ).run(as_of_date, financials)
+    )
+    issues.extend(OutlierCheck().run(as_of_date, financials, markets, historical_market, config.block_on_severe_outlier))
     return DataQualityReport(as_of_date=as_of_date, issues=issues)
 
 
