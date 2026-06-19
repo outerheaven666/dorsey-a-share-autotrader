@@ -1,0 +1,21 @@
+from_version: v1
+to_version: v1_1
+effective_date: 2026-06-01
+compatibility_window_days: 180
+migration_summary: Backward compatible alias fixture.
+safety_notes:
+  - No real network data source connection.
+required_actions:
+  - Keep alias until valid_until.
+rollback_notes:
+  - Alias can be removed from candidate if needed.
+field_migrations: []
+deprecated_fields: []
+aliases:
+  - dataset: stock_basic
+    alias_field: listing_dt
+    canonical_field: listing_date
+    backward_compatible: true
+    valid_until: 2027-01-01
+breaking_changes: []
+additive_changes: []

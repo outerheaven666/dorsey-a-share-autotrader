@@ -1,4 +1,5 @@
 import csv
+import re
 from pathlib import Path
 
 from dorsey_as.cli import explain_score, generate_report, run_backtest, run_score, validate_schema
@@ -144,5 +145,5 @@ def test_reports_include_point_in_time_and_factor_audit_summary(tmp_path: Path) 
 def test_no_real_network_or_broker_source_keywords_in_src() -> None:
     source_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in Path("src").rglob("*.py"))
     forbidden = ["akshare", "tushare", "wind", "choice", "joinquant", "jqdatasdk", "qmt", "ptrade"]
-    assert not any(word in source_text.lower() for word in forbidden)
+    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
     assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url="])

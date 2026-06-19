@@ -10,6 +10,7 @@ from dorsey_as.config.models import (
     AppConfig,
     AuditConfig,
     BacktestConfig,
+    ContractVisualizationConfig,
     ContractDiffConfig,
     DataQualityConfig,
     DataSourceConfig,
@@ -22,6 +23,7 @@ from dorsey_as.config.models import (
     ProviderTemplatesConfig,
     ReportConfig,
     SchemaValidationConfig,
+    SchemaMigrationConfig,
     SchemaVersioningConfig,
     ScoringConfig,
     TransactionCostConfig,
@@ -123,6 +125,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         schema_versioning=_section(SchemaVersioningConfig, raw.get("schema_versioning")),
         contract_diff=_section(ContractDiffConfig, raw.get("contract_diff")),
         provider_templates=_section(ProviderTemplatesConfig, raw.get("provider_templates")),
+        schema_migration=_section(SchemaMigrationConfig, raw.get("schema_migration")),
+        contract_visualization=_section(ContractVisualizationConfig, raw.get("contract_visualization")),
     )
     validate_config(config)
     return config
@@ -195,3 +199,9 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("provider_templates.templates_are_non_executable must remain true in this MVP.")
     if config.provider_templates.real_provider_templates_enabled:
         raise ConfigError("provider_templates.real_provider_templates_enabled must remain false in this MVP.")
+    if config.schema_migration.compatibility_window_days <= 0:
+        raise ConfigError("schema_migration.compatibility_window_days must be positive.")
+    if config.schema_migration.current_version != config.schema_versioning.current_version:
+        raise ConfigError("schema_migration.current_version must match schema_versioning.current_version.")
+    if not config.schema_migration.block_on_expired_deprecation:
+        raise ConfigError("schema_migration.block_on_expired_deprecation must remain true in this MVP.")

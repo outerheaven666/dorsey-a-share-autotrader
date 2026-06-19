@@ -146,3 +146,27 @@ provider_templates:
   enabled: true
   real_provider_templates_enabled: false
   templates_are_non_executable: true
+
+schema_migration:
+  enabled: true
+  current_version: v1
+  target_version: v1_1
+  migration_dir: config/schema_migrations
+  migration_plan: config/schema_migrations/v1_to_v1_1.yaml
+  compatibility_window_days: 180
+  block_on_expired_deprecation: true
+  block_on_missing_migration_plan: true
+  warn_on_pending_deprecation: true
+  allow_backward_compatible_aliases: true
+
+contract_visualization:
+  enabled: true
+  output_dir: data/output
+  generate_html: true
+  generate_markdown: true
+  include_dataset_summary: true
+  include_field_lifecycle: true
+  include_migration_steps: true
+  include_breaking_change_table: true
+  include_additive_change_table: true
+  include_compatibility_matrix: true
