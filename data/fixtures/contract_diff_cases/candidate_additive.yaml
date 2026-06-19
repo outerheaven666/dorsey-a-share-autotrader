@@ -1,0 +1,28 @@
+version: v1
+description: Additive optional field fixture.
+datasets:
+  stock_basic:
+    version: v1
+    description: Adds a documented optional source tag.
+    required_fields:
+      - symbol
+      - name
+      - industry
+      - is_st
+      - is_suspended
+    optional_fields:
+      - source_tag
+    field_types:
+      symbol: string
+      name: string
+      industry: string
+      is_st: boolean
+      is_suspended: boolean
+      source_tag: string
+    date_fields: []
+    numeric_fields: []
+    boolean_fields:
+      - is_st
+      - is_suspended
+    primary_key:
+      - symbol

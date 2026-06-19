@@ -157,6 +157,37 @@ class ProviderTestsConfig:
 
 
 @dataclass
+class SchemaVersioningConfig:
+    enabled: bool = True
+    current_version: str = "v1"
+    schema_dir: str = "config/schemas"
+    baseline_contract: str = "config/schemas/provider_contract_v1.yaml"
+    candidate_contract: str = "config/schemas/provider_contract_candidate.yaml"
+    block_on_breaking_change: bool = True
+    warn_on_additive_change: bool = True
+    allow_documented_extra_fields: bool = True
+
+
+@dataclass
+class ContractDiffConfig:
+    enabled: bool = True
+    output_dir: str = "data/output"
+    compare_required_fields: bool = True
+    compare_field_types: bool = True
+    compare_date_fields: bool = True
+    compare_numeric_fields: bool = True
+    compare_boolean_fields: bool = True
+    compare_dataset_presence: bool = True
+
+
+@dataclass
+class ProviderTemplatesConfig:
+    enabled: bool = True
+    real_provider_templates_enabled: bool = False
+    templates_are_non_executable: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -173,3 +204,6 @@ class AppConfig:
     adapter_contract: AdapterContractConfig = field(default_factory=AdapterContractConfig)
     field_mapping: FieldMappingConfig = field(default_factory=FieldMappingConfig)
     provider_tests: ProviderTestsConfig = field(default_factory=ProviderTestsConfig)
+    schema_versioning: SchemaVersioningConfig = field(default_factory=SchemaVersioningConfig)
+    contract_diff: ContractDiffConfig = field(default_factory=ContractDiffConfig)
+    provider_templates: ProviderTemplatesConfig = field(default_factory=ProviderTemplatesConfig)

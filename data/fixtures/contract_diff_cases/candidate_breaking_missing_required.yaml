@@ -1,0 +1,24 @@
+version: v1
+description: Breaking fixture that removes a required field.
+datasets:
+  stock_basic:
+    version: v1
+    description: Missing industry required field.
+    required_fields:
+      - symbol
+      - name
+      - is_st
+      - is_suspended
+    optional_fields: []
+    field_types:
+      symbol: string
+      name: string
+      is_st: boolean
+      is_suspended: boolean
+    date_fields: []
+    numeric_fields: []
+    boolean_fields:
+      - is_st
+      - is_suspended
+    primary_key:
+      - symbol

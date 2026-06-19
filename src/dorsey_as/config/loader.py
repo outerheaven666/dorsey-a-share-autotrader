@@ -10,6 +10,7 @@ from dorsey_as.config.models import (
     AppConfig,
     AuditConfig,
     BacktestConfig,
+    ContractDiffConfig,
     DataQualityConfig,
     DataSourceConfig,
     FactorAuditConfig,
@@ -18,8 +19,10 @@ from dorsey_as.config.models import (
     PointInTimeConfig,
     PortfolioConfig,
     ProviderTestsConfig,
+    ProviderTemplatesConfig,
     ReportConfig,
     SchemaValidationConfig,
+    SchemaVersioningConfig,
     ScoringConfig,
     TransactionCostConfig,
 )
@@ -117,6 +120,9 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         adapter_contract=_section(AdapterContractConfig, raw.get("adapter_contract")),
         field_mapping=_section(FieldMappingConfig, raw.get("field_mapping")),
         provider_tests=_section(ProviderTestsConfig, raw.get("provider_tests")),
+        schema_versioning=_section(SchemaVersioningConfig, raw.get("schema_versioning")),
+        contract_diff=_section(ContractDiffConfig, raw.get("contract_diff")),
+        provider_templates=_section(ProviderTemplatesConfig, raw.get("provider_templates")),
     )
     validate_config(config)
     return config
@@ -181,3 +187,11 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("adapter_contract.allow_real_provider must remain false in this MVP.")
     if config.adapter_contract.provider != "mock_a_share":
         raise ConfigError("adapter_contract.provider must be mock_a_share in this MVP.")
+    if config.schema_versioning.current_version != "v1":
+        raise ConfigError("schema_versioning.current_version must be v1 in this MVP.")
+    if not config.schema_versioning.block_on_breaking_change:
+        raise ConfigError("schema_versioning.block_on_breaking_change must remain true in this MVP.")
+    if not config.provider_templates.templates_are_non_executable:
+        raise ConfigError("provider_templates.templates_are_non_executable must remain true in this MVP.")
+    if config.provider_templates.real_provider_templates_enabled:
+        raise ConfigError("provider_templates.real_provider_templates_enabled must remain false in this MVP.")

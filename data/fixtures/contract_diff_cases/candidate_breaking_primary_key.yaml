@@ -1,0 +1,21 @@
+version: v1
+description: Breaking fixture that changes a primary key.
+datasets:
+  trading_calendar:
+    version: v1
+    description: Calendar key must remain trade_date.
+    required_fields:
+      - trade_date
+      - is_rebalance_date
+    optional_fields: []
+    field_types:
+      trade_date: date
+      is_rebalance_date: boolean
+    date_fields:
+      - trade_date
+    numeric_fields: []
+    boolean_fields:
+      - is_rebalance_date
+    primary_key:
+      - trade_date
+      - is_rebalance_date

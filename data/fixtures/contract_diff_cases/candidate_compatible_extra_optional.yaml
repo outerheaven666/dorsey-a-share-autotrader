@@ -1,0 +1,79 @@
+version: v1
+description: Compatible optional-field fixture.
+datasets:
+  financial_snapshot:
+    version: v1
+    description: Adds a documented optional audit opinion field.
+    required_fields:
+      - symbol
+      - year
+      - revenue
+      - net_profit
+      - operating_cash_flow
+      - free_cash_flow
+      - total_assets
+      - total_liabilities
+      - equity
+      - accounts_receivable
+      - inventory
+      - goodwill
+      - non_recurring_profit
+      - roe
+      - roic
+      - gross_margin
+      - net_margin
+      - report_date
+      - disclosure_date
+    optional_fields:
+      - rd_expense
+      - selling_expense
+      - audit_opinion
+    field_types:
+      symbol: string
+      year: numeric
+      revenue: numeric
+      net_profit: numeric
+      operating_cash_flow: numeric
+      free_cash_flow: numeric
+      total_assets: numeric
+      total_liabilities: numeric
+      equity: numeric
+      accounts_receivable: numeric
+      inventory: numeric
+      goodwill: numeric
+      non_recurring_profit: numeric
+      roe: numeric
+      roic: numeric
+      gross_margin: numeric
+      net_margin: numeric
+      report_date: date
+      disclosure_date: date
+      rd_expense: numeric
+      selling_expense: numeric
+      audit_opinion: string
+    date_fields:
+      - report_date
+      - disclosure_date
+    numeric_fields:
+      - year
+      - revenue
+      - net_profit
+      - operating_cash_flow
+      - free_cash_flow
+      - total_assets
+      - total_liabilities
+      - equity
+      - accounts_receivable
+      - inventory
+      - goodwill
+      - non_recurring_profit
+      - roe
+      - roic
+      - gross_margin
+      - net_margin
+      - rd_expense
+      - selling_expense
+    boolean_fields: []
+    primary_key:
+      - symbol
+      - year

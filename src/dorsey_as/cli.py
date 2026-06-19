@@ -25,6 +25,9 @@ from dorsey_as.portfolio.constructor import build_target_portfolio
 from dorsey_as.reporting.html import generate_backtest_html_report, generate_run_html_report
 from dorsey_as.reporting.markdown import generate_backtest_report, generate_run_report
 from dorsey_as.scoring import calculate_scores
+from dorsey_as.schema_versioning.diff import diff_contracts
+from dorsey_as.schema_versioning.loader import load_provider_contract
+from dorsey_as.schema_versioning.report import write_contract_diff_report, write_contract_diff_summary
 
 
 def _write_scores(path: Path, scores: list[ScoreResult]) -> None:
@@ -254,6 +257,84 @@ def validate_provider_contract_cli(data_dir: Path, output_dir: Path, config_path
     if not report.passed and config.provider_tests.block_on_contract_failure:
         raise SystemExit(1)
     return output_dir / "provider_contract_report.csv"
+
+
+def diff_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("contract-diff")
+    baseline = load_provider_contract(Path(config.schema_versioning.baseline_contract))
+    candidate = load_provider_contract(Path(config.schema_versioning.candidate_contract))
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="schema_versioning",
+        decision_type="load_schema_contract",
+        decision="load_baseline_and_candidate",
+        reason=f"current_version={config.schema_versioning.current_version}",
+        input_summary=f"baseline={baseline.path}; candidate={candidate.path}",
+    )
+    report = diff_contracts(baseline, candidate, config.schema_versioning.block_on_breaking_change)
+    report_path = write_contract_diff_report(report, output_dir)
+    summary_path = write_contract_diff_summary(report, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="contract_diff",
+        decision_type="diff_schema_contract",
+        decision="block" if report.blocking_decision else "allow",
+        reason=f"breaking={report.breaking_count}, additive={report.additive_count}, compatible={report.compatible_count}",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="error" if report.blocking_decision else "info",
+    )
+    for row in report.rows:
+        if row.breaking:
+            _audit(
+                output_dir,
+                config,
+                run_id=run_id,
+                stage="contract_diff",
+                decision_type="detect_breaking_change",
+                decision=row.change_type,
+                reason=row.message,
+                input_summary=f"{row.dataset}.{row.field}",
+                output_summary=f"{row.baseline_value}->{row.candidate_value}",
+                severity="error",
+            )
+        elif row.change_type.startswith("additive"):
+            _audit(
+                output_dir,
+                config,
+                run_id=run_id,
+                stage="contract_diff",
+                decision_type="detect_additive_change",
+                decision=row.change_type,
+                reason=row.message,
+                input_summary=f"{row.dataset}.{row.field}",
+                output_summary=f"{row.baseline_value}->{row.candidate_value}",
+                severity="warning",
+            )
+    if report.blocking_decision:
+        _audit(
+            output_dir,
+            config,
+            run_id=run_id,
+            stage="contract_diff",
+            decision_type="block_contract_change",
+            decision="blocked",
+            reason="breaking contract changes detected",
+            output_summary=str(report_path),
+            severity="error",
+        )
+    print(
+        "Provider contract diff complete: "
+        f"breaking={report.breaking_count}, additive={report.additive_count}; "
+        f"wrote report to {report_path}"
+    )
+    if report.blocking_decision:
+        raise SystemExit(1)
+    return report_path
 
 
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
@@ -496,6 +577,11 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         f"- Current adapter provider: {config.adapter_contract.provider}",
         f"- allow_network: {str(config.adapter_contract.allow_network).lower()}",
         f"- allow_real_provider: {str(config.adapter_contract.allow_real_provider).lower()}",
+        f"- Current schema contract version: {config.schema_versioning.current_version}",
+        f"- Baseline contract path: {config.schema_versioning.baseline_contract}",
+        f"- Candidate contract path: {config.schema_versioning.candidate_contract}",
+        f"- Contract diff enabled: {str(config.contract_diff.enabled).lower()}",
+        f"- Real provider template enabled: {str(config.provider_templates.real_provider_templates_enabled).lower()}",
         "",
         "## Why There Is No Real Provider",
         "",
@@ -509,7 +595,12 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         "- Normalize symbols, dates, numeric values, and boolean flags.",
         "- Provide disclosure_date for point-in-time financial data.",
         "- Pass schema validation, duplicate-key checks, and point-in-time checks.",
+        "- Pass schema versioning and contract diff checks before any adapter can be considered.",
         "- Keep network and real-provider paths disabled by default until a later explicitly approved milestone.",
+        "",
+        "## Disabled Provider Template",
+        "",
+        "The real provider template is disabled by default and non-executable. It is documentation-oriented scaffolding only, is not registered, and cannot be called by CLI commands.",
         "",
         "## Safety Statement",
         "",
@@ -521,8 +612,8 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         output_dir,
         config,
         run_id=run_id,
-        stage="adapter_contract",
-        decision_type="reject_real_provider",
+        stage="provider_template",
+        decision_type="reject_real_provider_template",
         decision="explain_provider_boundary",
         reason="real providers are disabled; mock provider is contract-test only",
         output_summary=str(output_path),
@@ -600,6 +691,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(notify)
     provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
     _add_config_arg(provider_contract)
+    contract_diff = subparsers.add_parser("diff-provider-contract", help="Diff baseline and candidate provider schema contracts.")
+    _add_config_arg(contract_diff)
     provider_explain = subparsers.add_parser("explain-provider", help="Explain current data provider safety boundary.")
     _add_config_arg(provider_explain)
     explain = subparsers.add_parser("explain-score", help="Explain one stock score from scores.csv and factor_audit_log.csv.")
@@ -629,6 +722,8 @@ def main(argv: list[str] | None = None) -> None:
         notify_summary(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-provider-contract":
         validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "diff-provider-contract":
+        diff_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "explain-provider":
         explain_provider(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "explain-score":

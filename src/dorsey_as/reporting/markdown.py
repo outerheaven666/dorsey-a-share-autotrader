@@ -39,6 +39,7 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     manifest_rows = read_csv_rows(output_dir / "data_source_manifest.csv")
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
+    contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
 
@@ -69,6 +70,21 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         f"- Provider contract validation rows: {len(provider_contract_rows)}",
         f"- Provider contract failures: {sum(1 for row in provider_contract_rows if row.get('status') == 'fail')}",
         f"- Field mapping preview rows: {len(mapped_preview_rows)}",
+        "",
+        "## Schema Versioning Summary",
+        "",
+        f"- Current contract version: {config.schema_versioning.current_version}",
+        f"- Baseline contract: {config.schema_versioning.baseline_contract}",
+        f"- Candidate contract: {config.schema_versioning.candidate_contract}",
+        f"- Disabled provider template status: {'disabled' if not config.provider_templates.real_provider_templates_enabled else 'enabled'}",
+        "",
+        "## Contract Diff Summary",
+        "",
+        f"- Contract diff rows: {len(contract_diff_rows)}",
+        f"- Breaking change count: {sum(1 for row in contract_diff_rows if row.get('breaking') == 'True')}",
+        f"- Additive change count: {sum(1 for row in contract_diff_rows if row.get('change_type', '').startswith('additive'))}",
+        "- Real data source status: not enabled",
+        "- Network data source status: disabled",
         "",
         "## Schema Validation Summary",
         "",
@@ -142,6 +158,7 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
     factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
+    contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -178,6 +195,9 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         "- Mock provider is used only for adapter contract tests.",
         "- Network data sources and real providers are disabled.",
         f"- Provider contract validation rows: {len(provider_contract_rows)}",
+        f"- Contract version used: {config.schema_versioning.current_version}",
+        f"- Contract diff rows: {len(contract_diff_rows)}",
+        "- contract diff does not participate in trading decisions; it is a pre-integration data adapter check.",
         "",
         "## Point-in-Time Summary",
         "",
