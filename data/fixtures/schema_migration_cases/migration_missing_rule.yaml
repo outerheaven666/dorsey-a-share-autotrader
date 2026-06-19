@@ -1,0 +1,27 @@
+from_version: v1
+to_version: v1_1
+effective_date: 2026-06-01
+compatibility_window_days: 180
+migration_summary: Missing migration rule fixture.
+safety_notes:
+  - No real network data source connection.
+required_actions:
+  - Add missing rule.
+rollback_notes:
+  - Keep previous contract until rule exists.
+field_migrations:
+  - dataset: stock_basic
+    old_field: listing_dt
+    new_field: listing_date
+    change_type: rename
+    status: deprecated
+    effective_date: 2026-06-01
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    backward_compatible: true
+    migration_rule: ""
+    reason: missing rule fixture
+deprecated_fields: []
+aliases: []
+breaking_changes: []
+additive_changes: []

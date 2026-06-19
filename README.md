@@ -2,17 +2,17 @@
 
 A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
 
-Current phase: **MVP 8 / Schema Versioning and Provider Contract Diff**.
+Current phase: **MVP 9 / Schema Migration Metadata and Contract Diff Visualization**.
 
-This project does **not** perform real-money trading. It only reads local sample CSV files, local fixture CSV files, validates schemas, diffs provider contract YAML files, builds point-in-time visible datasets, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, generates reports, writes dry-run notification summaries, and records local audit logs.
+This project does **not** perform real-money trading. It only reads local sample CSV files, local fixture CSV files, validates schemas, validates schema migration metadata, diffs provider contract YAML files, renders local static contract diff reports, builds point-in-time visible datasets, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, generates reports, writes dry-run notification summaries, and records local audit logs.
 
 ## Safety Statement
 
 This system is for personal research, system development, paper trading, and backtest simulation only.
 
-It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection. It has no real network data source connection. It has no real broker credentials, and no live order placement path.
+It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection. It has no real network data source connection. It has no real broker credentials and no live order placement path.
 
-`MockAShareProvider` is not an actual market data source. It reads fake local fixture CSV files and exists only to test future adapter contracts. The real provider template is disabled by default, non-executable, not registered, and will not connect to real providers.
+`MockAShareProvider` is not an actual market data source. It reads fake local fixture CSV files and exists only to test future adapter contracts. The real provider template is disabled by default, non-executable, not registered, and will not connect to real providers. Schema migration metadata is used only for data-integration readiness checks and does not participate in trading decisions.
 
 ## Configuration
 
@@ -22,18 +22,147 @@ Default configuration:
 config/default.yaml
 ```
 
-Important sections:
+MVP 9 adds:
 
-* `data_source`: production path for local CSV sample data. Default mode is `local_csv`, provider is `sample_csv`, and `allow_network` is `false`.
-* `adapter_contract`: contract-test-only adapter settings. Default mode is `mock_only`, provider is `mock_a_share`, `allow_network` is `false`, and `allow_real_provider` is `false`.
-* `schema_versioning`: contract version settings. Default current version is `v1`, baseline contract is `config/schemas/provider_contract_v1.yaml`, candidate contract is `config/schemas/provider_contract_candidate.yaml`, and breaking changes block by default.
-* `contract_diff`: controls comparison of dataset presence, required fields, field types, date fields, numeric fields, and boolean fields.
-* `provider_templates`: keeps real provider templates disabled and non-executable.
-* `field_mapping`, `schema_validation`, `point_in_time`, `factor_audit`, `data_quality`, `report`, `notify`, and `audit`: retain previous MVP behavior.
+* `schema_migration`: current/target version, migration plan path, compatibility window, deprecation blocking, missing-plan blocking, pending deprecation warnings, and backward-compatible aliases.
+* `contract_visualization`: static HTML/Markdown visualization settings for contract diff, field lifecycle, migration steps, and compatibility matrix.
+
+Existing safety defaults remain:
+
+* `data_source.mode` is `local_csv`.
+* `adapter_contract.mode` is `mock_only`.
+* `allow_network` is `false`.
+* `allow_real_provider` is `false`.
+* `provider_templates.real_provider_templates_enabled` is `false`.
 
 No API token, password, secret, webhook, account, or paid data source credential is stored in the repository.
 
-## Schema Versioning
+## Schema Migration Metadata
+
+Default migration plan:
+
+```text
+config/schema_migrations/v1_to_v1_1.yaml
+```
+
+The migration plan contains:
+
+```text
+from_version
+to_version
+effective_date
+compatibility_window_days
+migration_summary
+field_migrations
+deprecated_fields
+aliases
+breaking_changes
+additive_changes
+required_actions
+rollback_notes
+safety_notes
+```
+
+Each field migration contains:
+
+```text
+dataset
+old_field
+new_field
+change_type
+status
+effective_date
+deprecation_date
+removal_date
+backward_compatible
+migration_rule
+reason
+```
+
+Supported lifecycle statuses:
+
+```text
+active
+deprecated
+pending_removal
+removed
+```
+
+The default migration plan is intentionally non-blocking. Breaking migration examples live only in:
+
+```text
+data/fixtures/schema_migration_cases/
+```
+
+## Field Deprecation Lifecycle
+
+The migration validator checks:
+
+* Version pair consistency.
+* Compatibility window.
+* Missing migration rules.
+* Pending deprecations.
+* Expired deprecations.
+* Backward-compatible aliases.
+* Breaking changes without required actions.
+
+`schema_migration.compatibility_window_days` defaults to `180`.
+
+Expired deprecations are blocking by default. Pending deprecations are warnings by default.
+
+## Validate Schema Migration
+
+Run:
+
+```bash
+python -m dorsey_as validate-schema-migration --config config/default.yaml
+```
+
+Outputs:
+
+```text
+data/output/schema_migration_report.csv
+data/output/schema_migration_summary.md
+```
+
+`schema_migration_report.csv` fields:
+
+```text
+from_version,to_version,dataset,field,check_type,status,severity,message
+```
+
+`schema_migration_summary.md` includes version pair, effective date, compatibility window, total migrations, deprecated fields, pending removals, expired deprecations, blocking decision, required actions, safety boundary, and limitations.
+
+## Contract Diff Visualization
+
+Run:
+
+```bash
+python -m dorsey_as generate-contract-diff-html --config config/default.yaml
+```
+
+Outputs:
+
+```text
+data/output/provider_contract_diff.html
+data/output/provider_contract_diff_visual_summary.md
+```
+
+The HTML report is static, uses no external CDN, and includes:
+
+* Baseline contract path.
+* Candidate contract path.
+* From/to migration versions.
+* Total changes.
+* Breaking/additive/compatible change counts.
+* Dataset summary table.
+* Field lifecycle table.
+* Migration steps table.
+* Compatibility matrix.
+* Disabled provider template status.
+* Safety boundary.
+
+## Schema Versioning And Contract Diff
 
 Provider contracts are local static YAML files:
 
@@ -41,32 +170,6 @@ Provider contracts are local static YAML files:
 config/schemas/provider_contract_v1.yaml
 config/schemas/provider_contract_candidate.yaml
 ```
-
-Each dataset contract defines:
-
-```text
-required_fields
-optional_fields
-field_types
-date_fields
-numeric_fields
-boolean_fields
-primary_key
-version
-description
-```
-
-Covered datasets:
-
-```text
-stock_basic
-financial_snapshot
-market_snapshot
-historical_market_snapshot
-trading_calendar
-```
-
-## Contract Diff
 
 Run:
 
@@ -87,31 +190,11 @@ data/output/provider_contract_diff_summary.md
 dataset,field,change_type,severity,baseline_value,candidate_value,breaking,message
 ```
 
-Change categories:
-
-* Breaking change: deleted required field, required field type change, primary key change, deleted dataset, date/numeric/boolean field category regression.
-* Additive change: new optional field, new dataset, documented extra field.
-* Compatible change: no detected breaking change and no required contract regression.
-
-If `schema_versioning.block_on_breaking_change` is `true`, breaking changes produce a blocking decision. The default candidate contract is compatible/additive only, so the standard validation flow can run through. Breaking fixtures are stored under:
-
-```text
-data/fixtures/contract_diff_cases/
-```
+Contract diff detects breaking, additive, and compatible changes. It is a data-adapter readiness check and does not participate in trading decisions.
 
 ## Adapter Contract Layer
 
-The adapter contract defines a `DataProvider` interface with:
-
-```text
-get_stock_basic()
-get_financial_snapshot()
-get_market_snapshot()
-get_historical_market_snapshot()
-get_trading_calendar()
-```
-
-Current implementation:
+The only implemented provider is:
 
 ```text
 MockAShareProvider
@@ -133,25 +216,7 @@ The template lives at:
 src/dorsey_as/adapters/templates/real_provider_template.py
 ```
 
-It is disabled by default, non-executable, not registered, not reachable from CLI, and contains no real SDK import, endpoint, credential, or network path. It exists only as documentation-oriented scaffolding for a later approved milestone.
-
-## Provider Contract Validation
-
-Run:
-
-```bash
-python -m dorsey_as validate-provider-contract --config config/default.yaml
-```
-
-Outputs:
-
-```text
-data/output/provider_contract_report.csv
-data/output/provider_contract_summary.md
-data/output/adapter_mapped_preview.csv
-```
-
-This command only validates the mock provider fixtures, field mapping, schema compatibility, duplicate keys, numeric parsing, and point-in-time compatibility.
+It is disabled by default, non-executable, not registered, not reachable from CLI, and contains no real SDK import, endpoint, credential, or network path.
 
 ## Explain Provider
 
@@ -167,55 +232,14 @@ Output:
 data/output/provider_explanation.md
 ```
 
-The explanation includes the current data source mode, adapter mode, provider, schema contract version, baseline and candidate contract paths, contract diff status, disabled template status, why no real provider exists now, and what future providers must satisfy.
-
-## Local Data Source Layer
-
-The default scoring, portfolio, paper broker, and backtest paths still use:
-
-```text
-LocalCsvDataSource
-```
-
-Local CSV sample outputs:
-
-```text
-data/output/data_source_manifest.csv
-data/output/schema_validation_report.csv
-```
-
-## Point-In-Time Data
-
-Financial snapshots include `report_date` and `disclosure_date`. At any `as_of_date`, the system may only use rows where:
-
-```text
-disclosure_date <= as_of_date
-```
-
-Output:
-
-```text
-data/output/point_in_time_snapshot.csv
-```
-
-## Factor Audit Drilldown
-
-Output:
-
-```text
-data/output/factor_audit_log.csv
-```
-
-Fields:
-
-```text
-run_id,timestamp,as_of_date,symbol,factor_group,factor_name,raw_value,normalized_value,component_score,weight,weighted_score,reason,severity
-```
+The explanation includes schema migration status, current/target version, migration plan path, compatibility window, field lifecycle rules, contract diff HTML capability, and the checks required before any future real provider can be considered.
 
 ## CLI Usage
 
 ```bash
+python -m dorsey_as validate-schema-migration --config config/default.yaml
 python -m dorsey_as diff-provider-contract --config config/default.yaml
+python -m dorsey_as generate-contract-diff-html --config config/default.yaml
 python -m dorsey_as validate-provider-contract --config config/default.yaml
 python -m dorsey_as explain-provider --config config/default.yaml
 python -m dorsey_as validate-schema --config config/default.yaml
@@ -238,30 +262,16 @@ data/output/run_report.html
 data/output/backtest_report.html
 ```
 
-MVP 8 reports include:
+MVP 9 reports include:
 
-* Data source summary.
-* Adapter contract summary.
-* Schema versioning summary.
-* Current contract version.
-* Contract diff status.
-* Breaking and additive change counts.
-* Disabled provider template status.
-* Real data source status: not enabled.
-* Network data source status: disabled.
-* Backtest statement that contract diff does not participate in trading decisions.
-* Safety statement.
-
-## Notifications
-
-Notification summary remains dry-run by default:
-
-```text
-data/output/notify_payload.json
-data/output/notify_summary.md
-```
-
-No real notification is sent unless explicitly configured in a later phase. If real sending is ever enabled, webhook values must come from environment variables and must not be committed.
+* Schema migration summary.
+* Current/target version.
+* Migration plan path.
+* Compatibility window.
+* Deprecated and expired deprecation counts.
+* Contract diff visualization status.
+* Statement that migration metadata does not participate in trading decisions.
+* Safety boundary.
 
 ## Audit Logs
 
@@ -271,41 +281,47 @@ Output:
 data/output/decision_audit_log.csv
 ```
 
-MVP 8 adds stages:
+MVP 9 adds stages:
 
-* `schema_versioning`
-* `contract_diff`
-* `provider_template`
+* `schema_migration`
+* `contract_visualization`
+* `field_lifecycle`
+* `compatibility_matrix`
 
-MVP 8 adds decision types:
+MVP 9 adds decision types:
 
-* `load_schema_contract`
-* `diff_schema_contract`
-* `detect_breaking_change`
-* `detect_additive_change`
-* `reject_real_provider_template`
-* `block_contract_change`
+* `load_migration_plan`
+* `validate_migration_plan`
+* `detect_expired_deprecation`
+* `detect_pending_deprecation`
+* `validate_compatibility_window`
+* `generate_contract_diff_html`
+* `generate_compatibility_matrix`
+* `block_schema_migration`
 
 Audit logs are sanitized and must not contain tokens, secrets, passwords, credentials, webhook URLs, real account data, or real broker information.
 
-## Future Real Provider Requirements
+## Why No Real Data Source Yet
 
-A future real data provider must satisfy all of these before it can be considered:
+Future real providers must first pass:
 
-* Implement the `DataProvider` contract.
-* Pass provider contract validation.
-* Pass schema versioning and contract diff checks.
-* Map all required fields into the internal schema.
-* Provide point-in-time compatible `disclosure_date`.
-* Pass schema validation, data quality checks, duplicate-key checks, and numeric parsing checks.
-* Stay disabled by default until a later explicitly approved milestone.
-* Keep all credentials outside the repository.
+* `validate-provider-contract`
+* `diff-provider-contract`
+* `validate-schema-migration`
+* `generate-contract-diff-html`
+* point-in-time checks
+* schema validation
+* data quality checks
+* factor audit checks
+
+Even then, real providers remain disabled until a later explicitly approved milestone. No real trading path exists.
 
 ## Current Limitations
 
 * Only local sample CSV data is used by scoring and backtesting.
 * Mock provider reads fake local fixtures only.
-* Contract diff checks local YAML files only.
+* Contract diff and migration checks local YAML only.
+* Migration metadata does not participate in trading decisions.
 * No real network data source is implemented.
 * No paid data source is implemented.
 * No real broker integration exists.
@@ -314,16 +330,16 @@ A future real data provider must satisfy all of these before it can be considere
 
 ## Next Phase
 
-Recommended Phase 9 work:
+Recommended Phase 10 work:
 
-1. Add schema migration metadata and version compatibility windows.
-2. Add richer corporate-action and financial-restatement fixtures.
-3. Add provider contract diff visualization in HTML reports.
-4. Add disabled-by-default provider adapter scaffolding tests.
-5. Add point-in-time valuation snapshot contract coverage.
+1. Add richer schema migration visual diffs by dataset.
+2. Add migration timeline charts in static HTML.
+3. Add provider contract compatibility scorecards.
+4. Add point-in-time valuation migration metadata.
+5. Add fixture coverage for restatements and corporate actions.
 
 ## Disclaimer
 
 This project is for personal research and system development only.
 
-It does not provide investment advice, does not guarantee returns, does not support real-money trading, has no real broker connection, has no real network data source connection, and only supports paper trading and backtest simulation. Mock provider is only used for contract testing and is not an actual market data source. Real provider template is disabled by default, non-executable, and will not connect to real providers.
+It does not provide investment advice, does not guarantee returns, does not support real-money trading, has no real broker connection, has no real network data source connection, and only supports paper trading and backtest simulation. Mock provider is only used for contract testing and is not an actual market data source. Real provider template is disabled by default, non-executable, and will not connect to real providers. Schema migration metadata is used only for pre-integration checks and does not participate in trading decisions.

@@ -188,6 +188,34 @@ class ProviderTemplatesConfig:
 
 
 @dataclass
+class SchemaMigrationConfig:
+    enabled: bool = True
+    current_version: str = "v1"
+    target_version: str = "v1_1"
+    migration_dir: str = "config/schema_migrations"
+    migration_plan: str = "config/schema_migrations/v1_to_v1_1.yaml"
+    compatibility_window_days: int = 180
+    block_on_expired_deprecation: bool = True
+    block_on_missing_migration_plan: bool = True
+    warn_on_pending_deprecation: bool = True
+    allow_backward_compatible_aliases: bool = True
+
+
+@dataclass
+class ContractVisualizationConfig:
+    enabled: bool = True
+    output_dir: str = "data/output"
+    generate_html: bool = True
+    generate_markdown: bool = True
+    include_dataset_summary: bool = True
+    include_field_lifecycle: bool = True
+    include_migration_steps: bool = True
+    include_breaking_change_table: bool = True
+    include_additive_change_table: bool = True
+    include_compatibility_matrix: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -207,3 +235,5 @@ class AppConfig:
     schema_versioning: SchemaVersioningConfig = field(default_factory=SchemaVersioningConfig)
     contract_diff: ContractDiffConfig = field(default_factory=ContractDiffConfig)
     provider_templates: ProviderTemplatesConfig = field(default_factory=ProviderTemplatesConfig)
+    schema_migration: SchemaMigrationConfig = field(default_factory=SchemaMigrationConfig)
+    contract_visualization: ContractVisualizationConfig = field(default_factory=ContractVisualizationConfig)

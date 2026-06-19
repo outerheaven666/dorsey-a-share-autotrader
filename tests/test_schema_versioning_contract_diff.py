@@ -1,4 +1,5 @@
 import csv
+import re
 from pathlib import Path
 
 import pytest
@@ -149,5 +150,5 @@ def test_no_real_network_or_secret_keywords_in_mvp8_source() -> None:
         if path.is_file() and path.suffix in {".py", ".yaml", ".md", ".csv"}
     )
     forbidden = ["akshare", "tushare", "wind", "choice", "jqdata", "joinquant", "qmt", "ptrade"]
-    assert not any(word in source_text.lower() for word in forbidden)
+    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
     assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url=", "credential="])

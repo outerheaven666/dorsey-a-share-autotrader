@@ -1,0 +1,30 @@
+from_version: v1
+to_version: v1_1
+effective_date: 2026-06-01
+compatibility_window_days: 180
+migration_summary: Breaking change fixture with no action.
+safety_notes:
+  - No real network data source connection.
+required_actions: []
+rollback_notes:
+  - Keep v1 until action is documented.
+field_migrations:
+  - dataset: market_snapshot
+    old_field: close_price
+    new_field: close_price_text
+    change_type: type_change
+    status: active
+    effective_date: 2026-06-01
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    backward_compatible: false
+    migration_rule: parse text close price before schema validation
+    reason: breaking fixture
+deprecated_fields: []
+aliases: []
+breaking_changes:
+  - dataset: market_snapshot
+    field: close_price
+    change_type: type_change
+    reason: required numeric field changes semantics
+additive_changes: []

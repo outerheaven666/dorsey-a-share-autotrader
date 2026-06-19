@@ -1,0 +1,39 @@
+from_version: v1
+to_version: v1_1
+effective_date: 2026-06-01
+compatibility_window_days: 180
+migration_summary: Valid fixture with a backward compatible alias.
+safety_notes:
+  - No real network data source connection.
+required_actions:
+  - Keep alias documented.
+rollback_notes:
+  - Revert alias if checks fail.
+field_migrations:
+  - dataset: stock_basic
+    old_field: listing_dt
+    new_field: listing_date
+    change_type: rename
+    status: deprecated
+    effective_date: 2026-06-01
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    backward_compatible: true
+    migration_rule: map listing_dt to listing_date
+    reason: date naming clarity
+deprecated_fields:
+  - dataset: stock_basic
+    field: listing_dt
+    replacement: listing_date
+    status: deprecated
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    reason: date naming clarity
+aliases:
+  - dataset: stock_basic
+    alias_field: listing_dt
+    canonical_field: listing_date
+    backward_compatible: true
+    valid_until: 2027-01-01
+breaking_changes: []
+additive_changes: []

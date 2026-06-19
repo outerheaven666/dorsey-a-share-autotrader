@@ -40,6 +40,8 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
+    migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
+    visual_exists = (output_dir / "provider_contract_diff.html").exists()
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
 
@@ -85,6 +87,16 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         f"- Additive change count: {sum(1 for row in contract_diff_rows if row.get('change_type', '').startswith('additive'))}",
         "- Real data source status: not enabled",
         "- Network data source status: disabled",
+        "",
+        "## Schema Migration Summary",
+        "",
+        f"- Current version: {config.schema_migration.current_version}",
+        f"- Target version: {config.schema_migration.target_version}",
+        f"- Migration plan: {config.schema_migration.migration_plan}",
+        f"- Compatibility window days: {config.schema_migration.compatibility_window_days}",
+        f"- Deprecated fields count: {sum(1 for row in migration_rows if row.get('check_type') in {'pending_deprecation', 'expired_deprecation'})}",
+        f"- Expired deprecation count: {sum(1 for row in migration_rows if row.get('check_type') == 'expired_deprecation')}",
+        f"- Contract diff visualization status: {'generated' if visual_exists else 'not generated'}",
         "",
         "## Schema Validation Summary",
         "",
@@ -159,6 +171,7 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
+    migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -198,6 +211,9 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         f"- Contract version used: {config.schema_versioning.current_version}",
         f"- Contract diff rows: {len(contract_diff_rows)}",
         "- contract diff does not participate in trading decisions; it is a pre-integration data adapter check.",
+        f"- Schema migration status rows: {len(migration_rows)}",
+        f"- Migration target version: {config.schema_migration.target_version}",
+        "- migration metadata does not participate in trading decisions; it is a data-integration readiness check.",
         "",
         "## Point-in-Time Summary",
         "",

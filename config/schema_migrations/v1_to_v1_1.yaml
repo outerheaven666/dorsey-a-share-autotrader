@@ -1,0 +1,98 @@
+from_version: v1
+to_version: v1_1
+effective_date: 2026-06-01
+compatibility_window_days: 180
+migration_summary: Compatible metadata migration for optional provider fields and aliases.
+safety_notes:
+  - No real trading.
+  - No real broker connection.
+  - No real network data source connection.
+  - Mock provider is contract-test only.
+  - Real provider template is disabled by default and non-executable.
+required_actions:
+  - Keep local_csv sample as the production path.
+  - Validate provider contracts before any future external adapter.
+  - Keep aliases documented during the compatibility window.
+rollback_notes:
+  - Revert candidate optional fields and keep v1 stable contract if compatibility checks fail.
+field_migrations:
+  - dataset: stock_basic
+    old_field: symbol
+    new_field: symbol
+    change_type: no_change
+    status: active
+    effective_date: 2026-06-01
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    backward_compatible: true
+    migration_rule: keep symbol normalized as 600519.SH format
+    reason: stable primary identifier
+  - dataset: stock_basic
+    old_field: listing_dt
+    new_field: listing_date
+    change_type: rename
+    status: deprecated
+    effective_date: 2026-06-01
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    backward_compatible: true
+    migration_rule: map listing_dt to listing_date during compatibility window
+    reason: candidate contract documents listing_date as an optional date field
+  - dataset: financial_snapshot
+    old_field: audit_opinion
+    new_field: audit_opinion
+    change_type: add_optional
+    status: active
+    effective_date: 2026-06-01
+    deprecation_date: 2026-12-01
+    removal_date: 2027-06-01
+    backward_compatible: true
+    migration_rule: accept missing audit_opinion as empty optional metadata
+    reason: optional audit metadata can enrich data quality checks later
+  - dataset: market_snapshot
+    old_field: turnover
+    new_field: turnover_rate
+    change_type: rename
+    status: pending_removal
+    effective_date: 2026-06-01
+    deprecation_date: 2026-08-01
+    removal_date: 2027-01-15
+    backward_compatible: true
+    migration_rule: map turnover to turnover_rate while alias remains valid
+    reason: standardize naming for percentage fields
+deprecated_fields:
+  - dataset: stock_basic
+    field: listing_dt
+    replacement: listing_date
+    status: deprecated
+    deprecation_date: 2026-09-01
+    removal_date: 2027-01-01
+    reason: renamed for date-field clarity
+  - dataset: market_snapshot
+    field: turnover
+    replacement: turnover_rate
+    status: pending_removal
+    deprecation_date: 2026-08-01
+    removal_date: 2027-01-15
+    reason: renamed for unit clarity
+aliases:
+  - dataset: stock_basic
+    alias_field: listing_dt
+    canonical_field: listing_date
+    backward_compatible: true
+    valid_until: 2027-01-01
+  - dataset: market_snapshot
+    alias_field: turnover
+    canonical_field: turnover_rate
+    backward_compatible: true
+    valid_until: 2027-01-15
+breaking_changes: []
+additive_changes:
+  - dataset: stock_basic
+    field: listing_date
+    change_type: add_optional
+    reason: candidate optional listing date metadata
+  - dataset: financial_snapshot
+    field: audit_opinion
+    change_type: add_optional
+    reason: candidate optional audit metadata

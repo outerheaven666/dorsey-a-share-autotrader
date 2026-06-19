@@ -24,6 +24,10 @@ from dorsey_as.point_in_time import build_point_in_time_snapshot
 from dorsey_as.portfolio.constructor import build_target_portfolio
 from dorsey_as.reporting.html import generate_backtest_html_report, generate_run_html_report
 from dorsey_as.reporting.markdown import generate_backtest_report, generate_run_report
+from dorsey_as.schema_migration.loader import load_migration_plan
+from dorsey_as.schema_migration.report import write_schema_migration_report, write_schema_migration_summary
+from dorsey_as.schema_migration.validator import build_compatibility_matrix, validate_migration_plan
+from dorsey_as.schema_migration.visualization import generate_contract_diff_visualization
 from dorsey_as.scoring import calculate_scores
 from dorsey_as.schema_versioning.diff import diff_contracts
 from dorsey_as.schema_versioning.loader import load_provider_contract
@@ -337,6 +341,127 @@ def diff_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Pa
     return report_path
 
 
+def validate_schema_migration_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("schema-migration")
+    plan_path = Path(config.schema_migration.migration_plan)
+    if not plan_path.exists():
+        print(f"Schema migration plan not found: {plan_path}")
+        if config.schema_migration.block_on_missing_migration_plan:
+            raise SystemExit(1)
+    plan = load_migration_plan(plan_path)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="schema_migration",
+        decision_type="load_migration_plan",
+        decision="load",
+        reason=f"{plan.from_version}->{plan.to_version}",
+        input_summary=str(plan_path),
+    )
+    report = validate_migration_plan(plan, config.schema_migration)
+    report_path = write_schema_migration_report(report, output_dir)
+    summary_path = write_schema_migration_summary(report, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="schema_migration",
+        decision_type="validate_migration_plan",
+        decision="block" if report.blocking_decision else "allow",
+        reason=f"expired={report.expired_deprecation_count}, pending={report.pending_deprecation_count}",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="error" if report.blocking_decision else "info",
+    )
+    for row in report.rows:
+        if row.check_type == "expired_deprecation":
+            _audit(
+                output_dir,
+                config,
+                run_id=run_id,
+                stage="field_lifecycle",
+                decision_type="detect_expired_deprecation",
+                decision=row.status,
+                reason=row.message,
+                input_summary=f"{row.dataset}.{row.field}",
+                severity="error",
+            )
+        elif row.check_type == "pending_deprecation":
+            _audit(
+                output_dir,
+                config,
+                run_id=run_id,
+                stage="field_lifecycle",
+                decision_type="detect_pending_deprecation",
+                decision=row.status,
+                reason=row.message,
+                input_summary=f"{row.dataset}.{row.field}",
+                severity="warning",
+            )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="compatibility_matrix",
+        decision_type="generate_compatibility_matrix",
+        decision="generate",
+        reason=f"rows={len(build_compatibility_matrix(plan))}",
+        output_summary=str(summary_path),
+    )
+    print(
+        "Schema migration validation complete: "
+        f"blocking={report.blocking_decision}; wrote report to {report_path}"
+    )
+    if report.blocking_decision:
+        _audit(
+            output_dir,
+            config,
+            run_id=run_id,
+            stage="schema_migration",
+            decision_type="block_schema_migration",
+            decision="blocked",
+            reason="blocking migration issue detected",
+            output_summary=str(report_path),
+            severity="error",
+        )
+        raise SystemExit(1)
+    return report_path
+
+
+def generate_contract_diff_html_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("contract-visualization")
+    diff_path = output_dir / "provider_contract_diff_report.csv"
+    if not diff_path.exists():
+        diff_provider_contract_cli(data_dir, output_dir, config_path)
+    plan = load_migration_plan(Path(config.schema_migration.migration_plan))
+    migration_report = validate_migration_plan(plan, config.schema_migration)
+    html_path, summary_path = generate_contract_diff_visualization(output_dir, config, plan, migration_report)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="contract_visualization",
+        decision_type="generate_contract_diff_html",
+        decision="generate",
+        reason="static local HTML visualization generated",
+        output_summary=f"{html_path}; {summary_path}",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="compatibility_matrix",
+        decision_type="generate_compatibility_matrix",
+        decision="generate",
+        reason=f"rows={len(build_compatibility_matrix(plan))}",
+        output_summary=str(html_path),
+    )
+    print(f"Wrote contract diff visualization to {html_path} and {summary_path}")
+    return html_path
+
+
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("score")
@@ -582,6 +707,12 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         f"- Candidate contract path: {config.schema_versioning.candidate_contract}",
         f"- Contract diff enabled: {str(config.contract_diff.enabled).lower()}",
         f"- Real provider template enabled: {str(config.provider_templates.real_provider_templates_enabled).lower()}",
+        f"- Schema migration enabled: {str(config.schema_migration.enabled).lower()}",
+        f"- Migration current_version: {config.schema_migration.current_version}",
+        f"- Migration target_version: {config.schema_migration.target_version}",
+        f"- Migration plan path: {config.schema_migration.migration_plan}",
+        f"- Compatibility window days: {config.schema_migration.compatibility_window_days}",
+        f"- Contract diff HTML can be generated: {str(config.contract_visualization.generate_html).lower()}",
         "",
         "## Why There Is No Real Provider",
         "",
@@ -596,7 +727,12 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         "- Provide disclosure_date for point-in-time financial data.",
         "- Pass schema validation, duplicate-key checks, and point-in-time checks.",
         "- Pass schema versioning and contract diff checks before any adapter can be considered.",
+        "- Pass validate-provider-contract, diff-provider-contract, validate-schema-migration, generate-contract-diff-html, point-in-time checks, schema validation, and factor audit checks.",
         "- Keep network and real-provider paths disabled by default until a later explicitly approved milestone.",
+        "",
+        "## Field Deprecation Lifecycle",
+        "",
+        "Migration metadata tracks active, deprecated, pending_removal, and removed field states. Compatibility aliases are allowed only while documented and inside their validity window.",
         "",
         "## Disabled Provider Template",
         "",
@@ -695,6 +831,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(contract_diff)
     provider_explain = subparsers.add_parser("explain-provider", help="Explain current data provider safety boundary.")
     _add_config_arg(provider_explain)
+    migration = subparsers.add_parser("validate-schema-migration", help="Validate schema migration metadata and lifecycle rules.")
+    _add_config_arg(migration)
+    visual = subparsers.add_parser("generate-contract-diff-html", help="Generate static contract diff HTML visualization.")
+    _add_config_arg(visual)
     explain = subparsers.add_parser("explain-score", help="Explain one stock score from scores.csv and factor_audit_log.csv.")
     _add_config_arg(explain)
     explain.add_argument("--symbol", required=True)
@@ -726,6 +866,10 @@ def main(argv: list[str] | None = None) -> None:
         diff_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "explain-provider":
         explain_provider(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "validate-schema-migration":
+        validate_schema_migration_cli(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "generate-contract-diff-html":
+        generate_contract_diff_html_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "explain-score":
         explain_score(args.data_dir, args.output_dir, args.symbol, config_path=args.config)
     else:
