@@ -4,6 +4,7 @@ import argparse
 import csv
 from pathlib import Path
 
+from dorsey_as.audit import append_audit_record, new_run_id
 from dorsey_as.backtest.engine import BacktestEngine
 from dorsey_as.backtest.models import BacktestConfig as RuntimeBacktestConfig
 from dorsey_as.broker.paper import PaperBroker
@@ -14,7 +15,9 @@ from dorsey_as.data.loaders import load_sample_data
 from dorsey_as.data_quality.report import write_data_quality_report
 from dorsey_as.data_quality.validators import filter_financials_as_of, run_data_quality_checks
 from dorsey_as.models import ScoreResult, TargetPortfolio
+from dorsey_as.notify.summary import generate_notify_summary
 from dorsey_as.portfolio.constructor import build_target_portfolio
+from dorsey_as.reporting.html import generate_backtest_html_report, generate_run_html_report
 from dorsey_as.reporting.markdown import generate_backtest_report, generate_run_report
 from dorsey_as.scoring import calculate_scores
 
@@ -88,6 +91,38 @@ def _runtime_backtest_config(config: AppConfig, cash: float | None = None) -> Ru
     )
 
 
+def _audit(
+    output_dir: Path,
+    config: AppConfig,
+    *,
+    run_id: str,
+    stage: str,
+    as_of_date: str = "",
+    symbol: str = "",
+    decision_type: str,
+    decision: str,
+    reason: str,
+    input_summary: str = "",
+    output_summary: str = "",
+    severity: str = "info",
+) -> None:
+    if not config.audit.enabled:
+        return
+    append_audit_record(
+        output_dir,
+        stage=stage,
+        as_of_date=as_of_date,
+        symbol=symbol,
+        decision_type=decision_type,
+        decision=decision,
+        reason=reason,
+        input_summary=input_summary,
+        output_summary=output_summary,
+        severity=severity,
+        run_id=run_id,
+    )
+
+
 def _load_checked_sample_data(data_dir: Path, output_dir: Path, config: AppConfig, as_of_date: str | None = None):
     stocks, financials, markets = load_sample_data(data_dir)
     effective_as_of = as_of_date or _default_as_of_date(markets)
@@ -110,11 +145,24 @@ def _build_scores_and_portfolio(data_dir: Path, output_dir: Path, config: AppCon
 
 def check_data_quality(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
+    run_id = new_run_id("data-quality")
     stocks, financials, markets = load_sample_data(data_dir)
     effective_as_of = as_of_date or _default_as_of_date(markets)
     report = run_data_quality_checks(effective_as_of, stocks, financials, markets, data_quality_config=config.data_quality)
     output_path = output_dir / "data_quality_report.csv"
     write_data_quality_report(report, output_path)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="data_quality",
+        as_of_date=effective_as_of,
+        decision_type="allow" if report.passed else "block",
+        decision="check_data_quality",
+        reason=f"blocking={len(report.blocking_issues)}, warnings={len(report.warnings)}",
+        output_summary=str(output_path),
+        severity="info" if report.passed else "error",
+    )
     status = "passed" if report.passed else "failed"
     print(f"Data quality {status} for {effective_as_of}; wrote report to {output_path}")
     return output_path
@@ -122,27 +170,69 @@ def check_data_quality(data_dir: Path, output_dir: Path, as_of_date: str | None 
 
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
+    run_id = new_run_id("score")
     stocks, financials, markets, _report = _load_checked_sample_data(data_dir, output_dir, config, as_of_date)
     scores = calculate_scores(stocks, financials, markets, scoring_config=config.scoring)
     output_path = output_dir / "scores.csv"
     _write_scores(output_path, scores)
     generate_run_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    generate_run_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="scoring",
+        as_of_date=as_of_date or _default_as_of_date(markets),
+        decision_type="score",
+        decision="generate_scores",
+        reason="configured composite scoring completed",
+        input_summary=f"stocks={len(stocks)}",
+        output_summary=f"scores={len(scores)}",
+    )
+    if config.audit.include_score_decisions:
+        for score in scores[:10]:
+            _audit(
+                output_dir,
+                config,
+                run_id=run_id,
+                stage="scoring",
+                as_of_date=as_of_date or _default_as_of_date(markets),
+                symbol=score.symbol,
+                decision_type="score",
+                decision="rank",
+                reason="top score audit sample",
+                input_summary="quality/moat/valuation/risk scores",
+                output_summary=f"composite={score.composite_score}",
+            )
     print(f"Wrote {len(scores)} scores to {output_path}")
     return output_path
 
 
 def build_portfolio(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
+    run_id = new_run_id("portfolio")
     scores, portfolio, _prices = _build_scores_and_portfolio(data_dir, output_dir, config, as_of_date)
     _write_scores(output_dir / "scores.csv", scores)
     output_path = output_dir / "target_portfolio.csv"
     _write_portfolio(output_path, portfolio)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="portfolio",
+        decision_type="select",
+        decision="build_target_portfolio",
+        reason="configured portfolio constraints applied",
+        input_summary=f"scores={len(scores)}",
+        output_summary=f"positions={len(portfolio.positions)}",
+    )
     print(f"Wrote {len(portfolio.positions)} target positions to {output_path}")
     return output_path
 
 
 def paper_rebalance(data_dir: Path, output_dir: Path, cash: float | None, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
+    run_id = new_run_id("paper")
     scores, portfolio, prices = _build_scores_and_portfolio(data_dir, output_dir, config, as_of_date)
     _write_scores(output_dir / "scores.csv", scores)
     _write_portfolio(output_dir / "target_portfolio.csv", portfolio)
@@ -154,12 +244,25 @@ def paper_rebalance(data_dir: Path, output_dir: Path, cash: float | None, as_of_
     orders = broker.rebalance(portfolio, prices)
     broker.save_state(output_dir / "paper_state.csv")
     generate_run_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    generate_run_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="paper_broker",
+        decision_type="buy" if orders else "hold",
+        decision="paper_rebalance",
+        reason="paper broker simulation only",
+        input_summary=f"target_positions={len(portfolio.positions)}",
+        output_summary=f"orders={len(orders)}",
+    )
     print(f"Simulated {len(orders)} paper orders; wrote trades to {output_dir / 'paper_trades.csv'}")
     return output_dir / "paper_trades.csv"
 
 
 def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
+    run_id = new_run_id("backtest")
     engine = BacktestEngine.from_sample_data(
         data_dir=data_dir,
         output_dir=output_dir,
@@ -170,6 +273,35 @@ def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, co
     )
     result = engine.run()
     generate_backtest_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    generate_backtest_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="backtest",
+        decision_type="generate_report",
+        decision="run_backtest",
+        reason="local backtest simulation completed",
+        input_summary=f"initial_cash={engine.config.initial_cash}",
+        output_summary=f"equity_points={len(result.equity_curve)}, trades={len(result.trades)}",
+    )
+    if config.audit.include_rejected_trades:
+        for trade in result.trades:
+            if trade.status == "SKIPPED":
+                _audit(
+                    output_dir,
+                    config,
+                    run_id=run_id,
+                    stage="backtest",
+                    as_of_date=trade.trade_date,
+                    symbol=trade.symbol,
+                    decision_type="reject",
+                    decision=trade.side.lower(),
+                    reason=trade.reason,
+                    input_summary=f"quantity={trade.quantity}, price={trade.price}",
+                    output_summary="status=SKIPPED",
+                    severity="warning",
+                )
     print(
         "Backtest complete: "
         f"{len(result.equity_curve)} equity points, "
@@ -181,10 +313,41 @@ def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, co
 
 def generate_report(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
     config = load_config(config_path)
+    run_id = new_run_id("report")
     run_path = generate_run_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     backtest_path = generate_backtest_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
-    print(f"Wrote Markdown reports to {run_path} and {backtest_path}")
+    run_html = generate_run_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    backtest_html = generate_backtest_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="reporting",
+        decision_type="generate_report",
+        decision="generate_markdown_and_html",
+        reason="report command requested",
+        output_summary=f"{run_path}; {backtest_path}; {run_html}; {backtest_html}",
+    )
+    print(f"Wrote reports to {run_path}, {backtest_path}, {run_html}, and {backtest_html}")
     return run_path, backtest_path
+
+
+def notify_summary(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
+    config = load_config(config_path)
+    run_id = new_run_id("notify")
+    payload_path, summary_path = generate_notify_summary(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="notify",
+        decision_type="dry_run_notify" if not config.notify.enabled else "generate_report",
+        decision="write_notify_summary",
+        reason="notify.enabled=false" if not config.notify.enabled else f"notify.mode={config.notify.mode}",
+        output_summary=f"{payload_path}; {summary_path}",
+    )
+    print(f"Wrote notify dry-run summary to {payload_path} and {summary_path}")
+    return payload_path, summary_path
 
 
 def _add_config_arg(parser: argparse.ArgumentParser) -> None:
@@ -211,6 +374,8 @@ def build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--cash", type=float, default=None)
     report = subparsers.add_parser("generate-report", help="Generate Markdown reports from existing output CSV files.")
     _add_config_arg(report)
+    notify = subparsers.add_parser("notify-summary", help="Generate dry-run notification summary files.")
+    _add_config_arg(notify)
     return parser
 
 
@@ -229,5 +394,7 @@ def main(argv: list[str] | None = None) -> None:
         check_data_quality(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "generate-report":
         generate_report(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "notify-summary":
+        notify_summary(args.data_dir, args.output_dir, config_path=args.config)
     else:
         parser.error(f"unknown command: {args.command}")

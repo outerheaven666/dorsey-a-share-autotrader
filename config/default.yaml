@@ -31,9 +31,32 @@ data_quality:
   block_on_severe_outlier: true
 
 report:
-  output_format: markdown
+  output_format:
+    - markdown
+    - html
   include_data_quality_summary: true
   include_top_scores: true
   include_trade_summary: true
   include_backtest_metrics: true
   include_holdings_snapshot: true
+  include_equity_curve_chart: true
+  include_drawdown_chart: true
+  include_trade_table: true
+  include_holdings_table: true
+  include_data_quality_table: true
+  include_audit_summary: true
+
+notify:
+  enabled: false
+  mode: dry_run
+  channel: feishu
+  webhook_url_env: FEISHU_WEBHOOK_URL
+  write_payload_to_file: true
+
+audit:
+  enabled: true
+  include_score_decisions: true
+  include_portfolio_decisions: true
+  include_backtest_decisions: true
+  include_rejected_trades: true
+  include_data_quality_issues: true
