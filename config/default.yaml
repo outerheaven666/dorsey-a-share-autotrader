@@ -170,3 +170,46 @@ contract_visualization:
   include_breaking_change_table: true
   include_additive_change_table: true
   include_compatibility_matrix: true
+
+pre_live_safety:
+  enabled: true
+  default_mode: research_only
+  allowed_modes:
+    - research_only
+    - paper
+    - backtest
+    - dry_run
+  forbidden_modes:
+    - live
+    - real_broker
+    - real_order
+  require_manual_confirmation: true
+  require_read_only_first: true
+  require_schema_validation: true
+  require_provider_contract_validation: true
+  require_contract_diff_check: true
+  require_schema_migration_check: true
+  require_data_quality_check: true
+  require_point_in_time_check: true
+  require_factor_audit_check: true
+  require_backtest_before_paper: true
+  require_paper_before_live: true
+  block_live_trading: true
+  block_real_broker: true
+  block_real_network_provider: true
+  block_missing_audit_log: true
+  block_missing_safety_ack: true
+  safety_ack_phrase: "I understand this system is research-only and live trading is disabled"
+  output_dir: data/output
+
+execution_policy:
+  mode: research_only
+  allow_live_trading: false
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: false
+  allow_dry_run_notify: true
+  allow_paper_trading: true
+  allow_backtest: true
+  allow_local_csv: true
+  allow_mock_provider: true

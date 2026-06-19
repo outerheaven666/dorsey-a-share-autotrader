@@ -32,6 +32,14 @@ from dorsey_as.scoring import calculate_scores
 from dorsey_as.schema_versioning.diff import diff_contracts
 from dorsey_as.schema_versioning.loader import load_provider_contract
 from dorsey_as.schema_versioning.report import write_contract_diff_report, write_contract_diff_summary
+from dorsey_as.safety.gates import PreLiveSafetyGate
+from dorsey_as.safety.report import (
+    write_pre_live_safety_report,
+    write_pre_live_safety_summary,
+    write_safety_explanation,
+    write_simulated_live_request_report,
+    write_simulated_live_request_summary,
+)
 
 
 def _write_scores(path: Path, scores: list[ScoreResult]) -> None:
@@ -135,6 +143,53 @@ def _audit(
     )
 
 
+def _evaluate_safety(output_dir: Path, config: AppConfig, run_id: str, command: str) -> None:
+    if not config.pre_live_safety.enabled:
+        return
+    result = PreLiveSafetyGate(config, output_dir).evaluate()
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="pre_live_safety",
+        decision_type="evaluate_safety_gate",
+        decision="allow" if result.passed else "block",
+        reason=f"command={command}, blocking={len(result.blocking_issues)}, warnings={len(result.warnings)}",
+        severity="info" if result.passed else "error",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="execution_policy",
+        decision_type={
+            "research_only": "allow_research_only",
+            "paper": "allow_paper_mode",
+            "backtest": "allow_backtest_mode",
+            "dry_run": "allow_dry_run_notify",
+        }.get(config.execution_policy.mode, "evaluate_safety_gate"),
+        decision=config.execution_policy.mode,
+        reason=(
+            f"live={config.execution_policy.allow_live_trading}, "
+            f"broker={config.execution_policy.allow_real_broker}, "
+            f"orders={config.execution_policy.allow_real_orders}, "
+            f"network={config.execution_policy.allow_real_network_data}"
+        ),
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="safety_acknowledgement",
+        decision_type="validate_safety_ack",
+        decision="configured" if config.pre_live_safety.safety_ack_phrase else "missing",
+        reason="manual acknowledgement phrase metadata checked",
+        severity="info" if config.pre_live_safety.safety_ack_phrase else "error",
+    )
+    if result.blocking_issues:
+        raise SystemExit(1)
+
+
 def _load_checked_sample_data(data_dir: Path, output_dir: Path, config: AppConfig, as_of_date: str | None = None):
     if config.schema_validation.enabled:
         schema_report = validate_csv_schema(LocalCsvDataSource(config.data_source), config.schema_validation, output_dir)
@@ -211,6 +266,7 @@ def validate_schema(data_dir: Path, output_dir: Path, config_path: Path | None =
 def validate_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("provider-contract")
+    _evaluate_safety(output_dir, config, run_id, "validate-provider-contract")
     _audit(
         output_dir,
         config,
@@ -266,6 +322,7 @@ def validate_provider_contract_cli(data_dir: Path, output_dir: Path, config_path
 def diff_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("contract-diff")
+    _evaluate_safety(output_dir, config, run_id, "diff-provider-contract")
     baseline = load_provider_contract(Path(config.schema_versioning.baseline_contract))
     candidate = load_provider_contract(Path(config.schema_versioning.candidate_contract))
     _audit(
@@ -344,6 +401,7 @@ def diff_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Pa
 def validate_schema_migration_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("schema-migration")
+    _evaluate_safety(output_dir, config, run_id, "validate-schema-migration")
     plan_path = Path(config.schema_migration.migration_plan)
     if not plan_path.exists():
         print(f"Schema migration plan not found: {plan_path}")
@@ -432,6 +490,7 @@ def validate_schema_migration_cli(data_dir: Path, output_dir: Path, config_path:
 def generate_contract_diff_html_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("contract-visualization")
+    _evaluate_safety(output_dir, config, run_id, "generate-contract-diff-html")
     diff_path = output_dir / "provider_contract_diff_report.csv"
     if not diff_path.exists():
         diff_provider_contract_cli(data_dir, output_dir, config_path)
@@ -465,6 +524,7 @@ def generate_contract_diff_html_cli(data_dir: Path, output_dir: Path, config_pat
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("score")
+    _evaluate_safety(output_dir, config, run_id, "run-score")
     stocks, financials, markets, _report = _load_checked_sample_data(data_dir, output_dir, config, as_of_date)
     scores = calculate_scores(stocks, financials, markets, scoring_config=config.scoring)
     output_path = output_dir / "scores.csv"
@@ -570,6 +630,7 @@ def paper_rebalance(data_dir: Path, output_dir: Path, cash: float | None, as_of_
 def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("backtest")
+    _evaluate_safety(output_dir, config, run_id, "run-backtest")
     engine = BacktestEngine.from_sample_data(
         data_dir=data_dir,
         output_dir=output_dir,
@@ -622,6 +683,7 @@ def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, co
 def explain_score(data_dir: Path, output_dir: Path, symbol: str, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("explain")
+    _evaluate_safety(output_dir, config, run_id, "explain-score")
     scores_path = output_dir / "scores.csv"
     audit_path = output_dir / "factor_audit_log.csv"
     if not scores_path.exists() or not audit_path.exists():
@@ -713,6 +775,11 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         f"- Migration plan path: {config.schema_migration.migration_plan}",
         f"- Compatibility window days: {config.schema_migration.compatibility_window_days}",
         f"- Contract diff HTML can be generated: {str(config.contract_visualization.generate_html).lower()}",
+        f"- execution_policy.mode: {config.execution_policy.mode}",
+        f"- Pre-live safety enabled: {str(config.pre_live_safety.enabled).lower()}",
+        f"- allow_live_trading: {str(config.execution_policy.allow_live_trading).lower()}",
+        f"- allow_real_broker: {str(config.execution_policy.allow_real_broker).lower()}",
+        f"- allow_real_network_data: {str(config.execution_policy.allow_real_network_data).lower()}",
         "",
         "## Why There Is No Real Provider",
         "",
@@ -728,6 +795,7 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         "- Pass schema validation, duplicate-key checks, and point-in-time checks.",
         "- Pass schema versioning and contract diff checks before any adapter can be considered.",
         "- Pass validate-provider-contract, diff-provider-contract, validate-schema-migration, generate-contract-diff-html, point-in-time checks, schema validation, and factor audit checks.",
+        "- Pass the pre-live safety gate before any future real provider can be reviewed.",
         "- Keep network and real-provider paths disabled by default until a later explicitly approved milestone.",
         "",
         "## Field Deprecation Lifecycle",
@@ -740,7 +808,7 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         "",
         "## Safety Statement",
         "",
-        "No real-money trading is supported. No real broker connection exists. No real network data source connection exists. Mock provider is only used for contract testing and is not an actual market data source. This system is for personal research, system development, paper trading, and backtest simulation only. It does not provide investment advice and does not guarantee returns.",
+        "No real-money trading is supported. No real broker connection exists. No real order path exists. No real network data source connection exists. Mock provider is only used for contract testing and is not an actual market data source. Real provider template is disabled-by-default and non-executable. Schema migration metadata is only for pre-integration checks and does not participate in trading decisions. Pre-live safety gate blocks live trading, real broker, real order, and real network data by default. This system is for personal research, system development, paper trading, and backtest simulation only. It does not provide investment advice and does not guarantee returns.",
     ]
     output_path = output_dir / "provider_explanation.md"
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -761,6 +829,7 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
 def generate_report(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
     config = load_config(config_path)
     run_id = new_run_id("report")
+    _evaluate_safety(output_dir, config, run_id, "generate-report")
     run_path = generate_run_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     backtest_path = generate_backtest_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     run_html = generate_run_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
@@ -782,6 +851,7 @@ def generate_report(data_dir: Path, output_dir: Path, config_path: Path | None =
 def notify_summary(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
     config = load_config(config_path)
     run_id = new_run_id("notify")
+    _evaluate_safety(output_dir, config, run_id, "notify-summary")
     payload_path, summary_path = generate_notify_summary(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     _audit(
         output_dir,
@@ -793,8 +863,110 @@ def notify_summary(data_dir: Path, output_dir: Path, config_path: Path | None = 
         reason="notify.enabled=false" if not config.notify.enabled else f"notify.mode={config.notify.mode}",
         output_summary=f"{payload_path}; {summary_path}",
     )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="execution_policy",
+        decision_type="allow_dry_run_notify",
+        decision="allow" if config.execution_policy.allow_dry_run_notify else "block",
+        reason="notify-summary remains dry-run only",
+        output_summary=f"{payload_path}; {summary_path}",
+    )
     print(f"Wrote notify dry-run summary to {payload_path} and {summary_path}")
     return payload_path, summary_path
+
+
+def check_pre_live_safety(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("pre-live-safety")
+    result = PreLiveSafetyGate(config, output_dir).evaluate()
+    report_path = write_pre_live_safety_report(result, output_dir)
+    summary_path = write_pre_live_safety_summary(result, config, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="pre_live_safety",
+        decision_type="evaluate_safety_gate",
+        decision="allow" if result.passed else "block",
+        reason=f"blocking={len(result.blocking_issues)}, warnings={len(result.warnings)}",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="info" if result.passed else "error",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="execution_policy",
+        decision_type="allow_research_only" if config.execution_policy.mode == "research_only" else "evaluate_safety_gate",
+        decision=config.execution_policy.mode,
+        reason="pre-live safety check requested",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="safety_acknowledgement",
+        decision_type="validate_safety_ack",
+        decision="configured" if config.pre_live_safety.safety_ack_phrase else "missing",
+        reason="manual acknowledgement phrase metadata checked",
+        severity="info" if config.pre_live_safety.safety_ack_phrase else "error",
+    )
+    print(f"Pre-live safety check complete: blocking={len(result.blocking_issues)}; wrote report to {report_path}")
+    if result.blocking_issues:
+        raise SystemExit(1)
+    return report_path
+
+
+def explain_safety(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("safety-explain")
+    output_path = write_safety_explanation(config, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="pre_live_safety",
+        decision_type="evaluate_safety_gate",
+        decision="explain",
+        reason="safety explanation requested",
+        output_summary=str(output_path),
+    )
+    print(f"Wrote safety explanation to {output_path}")
+    return output_path
+
+
+def simulate_live_request(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("simulated-live")
+    report_path = write_simulated_live_request_report(output_dir)
+    summary_path = write_simulated_live_request_summary(output_dir)
+    for decision_type in ["block_live_trading", "block_real_broker", "block_real_order", "block_real_network_data"]:
+        _audit(
+            output_dir,
+            config,
+            run_id=run_id,
+            stage="simulated_live_request",
+            decision_type=decision_type,
+            decision="blocked",
+            reason="simulated request only; no real external action was taken",
+            output_summary=f"{report_path}; {summary_path}",
+            severity="error",
+        )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="simulated_live_request",
+        decision_type="simulate_live_request",
+        decision="blocked",
+        reason="live request was simulated only; no real order, broker, or network action",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="error",
+    )
+    print(f"Simulated live request blocked; wrote report to {report_path}")
+    return report_path
 
 
 def _add_config_arg(parser: argparse.ArgumentParser) -> None:
@@ -825,6 +997,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(report)
     notify = subparsers.add_parser("notify-summary", help="Generate dry-run notification summary files.")
     _add_config_arg(notify)
+    safety = subparsers.add_parser("check-pre-live-safety", help="Run research-only pre-live safety gate checks.")
+    _add_config_arg(safety)
+    safety_explain = subparsers.add_parser("explain-safety", help="Explain current safety boundary.")
+    _add_config_arg(safety_explain)
+    live_sim = subparsers.add_parser("simulate-live-request", help="Simulate and block a live trading request.")
+    _add_config_arg(live_sim)
     provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
     _add_config_arg(provider_contract)
     contract_diff = subparsers.add_parser("diff-provider-contract", help="Diff baseline and candidate provider schema contracts.")
@@ -860,6 +1038,12 @@ def main(argv: list[str] | None = None) -> None:
         generate_report(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "notify-summary":
         notify_summary(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "check-pre-live-safety":
+        check_pre_live_safety(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "explain-safety":
+        explain_safety(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "simulate-live-request":
+        simulate_live_request(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-provider-contract":
         validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "diff-provider-contract":

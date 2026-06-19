@@ -1,0 +1,6 @@
+execution_policy:
+  mode: live
+  allow_live_trading: true
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: false

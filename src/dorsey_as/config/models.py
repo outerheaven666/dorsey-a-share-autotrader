@@ -216,6 +216,46 @@ class ContractVisualizationConfig:
 
 
 @dataclass
+class PreLiveSafetyConfig:
+    enabled: bool = True
+    default_mode: str = "research_only"
+    allowed_modes: list[str] = field(default_factory=lambda: ["research_only", "paper", "backtest", "dry_run"])
+    forbidden_modes: list[str] = field(default_factory=lambda: ["live", "real_broker", "real_order"])
+    require_manual_confirmation: bool = True
+    require_read_only_first: bool = True
+    require_schema_validation: bool = True
+    require_provider_contract_validation: bool = True
+    require_contract_diff_check: bool = True
+    require_schema_migration_check: bool = True
+    require_data_quality_check: bool = True
+    require_point_in_time_check: bool = True
+    require_factor_audit_check: bool = True
+    require_backtest_before_paper: bool = True
+    require_paper_before_live: bool = True
+    block_live_trading: bool = True
+    block_real_broker: bool = True
+    block_real_network_provider: bool = True
+    block_missing_audit_log: bool = True
+    block_missing_safety_ack: bool = True
+    safety_ack_phrase: str = "I understand this system is research-only and live trading is disabled"
+    output_dir: str = "data/output"
+
+
+@dataclass
+class ExecutionPolicyConfig:
+    mode: str = "research_only"
+    allow_live_trading: bool = False
+    allow_real_broker: bool = False
+    allow_real_orders: bool = False
+    allow_real_network_data: bool = False
+    allow_dry_run_notify: bool = True
+    allow_paper_trading: bool = True
+    allow_backtest: bool = True
+    allow_local_csv: bool = True
+    allow_mock_provider: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -237,3 +277,5 @@ class AppConfig:
     provider_templates: ProviderTemplatesConfig = field(default_factory=ProviderTemplatesConfig)
     schema_migration: SchemaMigrationConfig = field(default_factory=SchemaMigrationConfig)
     contract_visualization: ContractVisualizationConfig = field(default_factory=ContractVisualizationConfig)
+    pre_live_safety: PreLiveSafetyConfig = field(default_factory=PreLiveSafetyConfig)
+    execution_policy: ExecutionPolicyConfig = field(default_factory=ExecutionPolicyConfig)

@@ -14,10 +14,12 @@ from dorsey_as.config.models import (
     ContractDiffConfig,
     DataQualityConfig,
     DataSourceConfig,
+    ExecutionPolicyConfig,
     FactorAuditConfig,
     FieldMappingConfig,
     NotifyConfig,
     PointInTimeConfig,
+    PreLiveSafetyConfig,
     PortfolioConfig,
     ProviderTestsConfig,
     ProviderTemplatesConfig,
@@ -127,6 +129,8 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         provider_templates=_section(ProviderTemplatesConfig, raw.get("provider_templates")),
         schema_migration=_section(SchemaMigrationConfig, raw.get("schema_migration")),
         contract_visualization=_section(ContractVisualizationConfig, raw.get("contract_visualization")),
+        pre_live_safety=_section(PreLiveSafetyConfig, raw.get("pre_live_safety")),
+        execution_policy=_section(ExecutionPolicyConfig, raw.get("execution_policy")),
     )
     validate_config(config)
     return config
@@ -205,3 +209,13 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("schema_migration.current_version must match schema_versioning.current_version.")
     if not config.schema_migration.block_on_expired_deprecation:
         raise ConfigError("schema_migration.block_on_expired_deprecation must remain true in this MVP.")
+    if config.pre_live_safety.default_mode != "research_only":
+        raise ConfigError("pre_live_safety.default_mode must be research_only in this MVP.")
+    if "live" not in config.pre_live_safety.forbidden_modes:
+        raise ConfigError("pre_live_safety.forbidden_modes must include live.")
+    if not config.pre_live_safety.block_live_trading:
+        raise ConfigError("pre_live_safety.block_live_trading must remain true in this MVP.")
+    if not config.pre_live_safety.block_real_broker:
+        raise ConfigError("pre_live_safety.block_real_broker must remain true in this MVP.")
+    if not config.pre_live_safety.block_real_network_provider:
+        raise ConfigError("pre_live_safety.block_real_network_provider must remain true in this MVP.")

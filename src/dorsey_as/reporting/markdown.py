@@ -10,9 +10,13 @@ from dorsey_as.reporting.summary import count_rows, latest_rows_by_date, read_cs
 
 SAFETY_TEXT = (
     "No real-money trading is supported. No real broker connection exists. "
-    "No real network data source connection exists. "
+    "No real order path exists. No real network data source connection exists. "
     "This system is for personal research, system development, paper trading, and backtest simulation only. "
-    "It does not provide investment advice and does not guarantee returns."
+    "It does not provide investment advice and does not guarantee returns. "
+    "Mock provider is only used for contract testing and is not an actual market data source. "
+    "Real provider template is disabled-by-default and non-executable. "
+    "Schema migration metadata is only for pre-integration checks and does not participate in trading decisions. "
+    "Pre-live safety gate blocks live trading, real broker, real order, and real network data by default."
 )
 
 
@@ -41,6 +45,7 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
+    safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
     visual_exists = (output_dir / "provider_contract_diff.html").exists()
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
@@ -97,6 +102,18 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         f"- Deprecated fields count: {sum(1 for row in migration_rows if row.get('check_type') in {'pending_deprecation', 'expired_deprecation'})}",
         f"- Expired deprecation count: {sum(1 for row in migration_rows if row.get('check_type') == 'expired_deprecation')}",
         f"- Contract diff visualization status: {'generated' if visual_exists else 'not generated'}",
+        "",
+        "## Pre-Live Safety Summary",
+        "",
+        f"- Execution policy mode: {config.execution_policy.mode}",
+        "- Live trading blocked: True",
+        "- Real broker blocked: True",
+        "- Real network data blocked: True",
+        f"- Dry-run notify allowed: {config.execution_policy.allow_dry_run_notify}",
+        f"- Paper trading allowed: {config.execution_policy.allow_paper_trading}",
+        f"- Backtest allowed: {config.execution_policy.allow_backtest}",
+        f"- Safety acknowledgement status: {'configured' if config.pre_live_safety.safety_ack_phrase else 'missing'}",
+        f"- Safety gate rows: {len(safety_rows)}",
         "",
         "## Schema Validation Summary",
         "",
@@ -172,6 +189,7 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
+    safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -214,6 +232,9 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         f"- Schema migration status rows: {len(migration_rows)}",
         f"- Migration target version: {config.schema_migration.target_version}",
         "- migration metadata does not participate in trading decisions; it is a data-integration readiness check.",
+        f"- Execution policy mode: {config.execution_policy.mode}",
+        "- Current system has no live trading, no real broker, no real orders, and no real network data.",
+        f"- Pre-live safety rows: {len(safety_rows)}",
         "",
         "## Point-in-Time Summary",
         "",
