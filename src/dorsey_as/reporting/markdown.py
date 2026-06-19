@@ -10,6 +10,7 @@ from dorsey_as.reporting.summary import count_rows, latest_rows_by_date, read_cs
 
 SAFETY_TEXT = (
     "No real-money trading is supported. No real broker connection exists. "
+    "No real network data source connection exists. "
     "This system is for personal research, system development, paper trading, and backtest simulation only. "
     "It does not provide investment advice and does not guarantee returns."
 )
@@ -32,6 +33,10 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     scores = top_rows(output_dir / "scores.csv", 10)
     portfolio = read_csv_rows(output_dir / "target_portfolio.csv")
     trades = read_csv_rows(output_dir / "paper_trades.csv")
+    schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
+    pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
+    factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
+    manifest_rows = read_csv_rows(output_dir / "data_source_manifest.csv")
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
 
@@ -47,6 +52,28 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         f"- Issues: {len(quality_rows)}",
         f"- Blocking issues: {blocking_count}",
         f"- Warnings: {warning_count}",
+        "",
+        "## Data Source Summary",
+        "",
+        f"- Manifest rows: {len(manifest_rows)}",
+        "- Mode: local_csv only; network access is disabled.",
+        "",
+        "## Schema Validation Summary",
+        "",
+        f"- Validation rows: {len(schema_rows)}",
+        f"- Failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}",
+        f"- Warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}",
+        "",
+        "## Point-in-Time Summary",
+        "",
+        f"- Snapshot rows: {len(pit_rows)}",
+        f"- Visible rows: {sum(1 for row in pit_rows if row.get('visible') == 'True')}",
+        f"- Future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}",
+        "",
+        "## Factor Audit Summary",
+        "",
+        f"- Factor audit rows: {len(factor_rows)}",
+        f"- Blocked risk rows: {sum(1 for row in factor_rows if row.get('factor_group') == 'risk' and row.get('severity') == 'error')}",
         "",
         "## Scoring Summary",
         "",
@@ -99,6 +126,9 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     metrics = {row.get("metric", ""): row.get("value", "") for row in metrics_rows}
     trades = read_csv_rows(output_dir / "backtest_trades.csv")
     audit = read_csv_rows(output_dir / "backtest_audit_log.csv")
+    pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
+    schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
+    factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -128,6 +158,18 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         "",
         f"- Blocking issue count: {blocking_count}",
         f"- Warning count: {warning_count}",
+        "",
+        "## Point-in-Time Summary",
+        "",
+        f"- Snapshot rows: {len(pit_rows)}",
+        f"- Future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}",
+        f"- Missing disclosure rows: {sum(1 for row in pit_rows if row.get('reason') == 'missing_disclosure_date')}",
+        "",
+        "## Schema And Factor Audit Summary",
+        "",
+        f"- Schema warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}",
+        f"- Schema failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}",
+        f"- Factor audit rows: {len(factor_rows)}",
         "",
         "## Trading Restriction Summary",
         "",

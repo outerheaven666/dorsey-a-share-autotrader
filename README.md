@@ -2,24 +2,15 @@
 
 A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
 
-Current phase: **MVP 5 / HTML Reports, Charts, Dry-Run Notifications, Audit Logs, Paper Trading, and Local Backtesting**.
+Current phase: **MVP 6 / Point-in-Time Data, Factor Audit Drilldown, Local Data Source Preparation, Reports, Paper Trading, and Local Backtesting**.
 
-This project does **not** perform real-money trading. It only reads local sample CSV files, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, generates reports, writes dry-run notification summaries, and records local audit logs.
+This project does **not** perform real-money trading. It only reads local sample CSV files, validates schemas, builds point-in-time visible datasets, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, generates reports, writes dry-run notification summaries, and records local audit logs.
 
 ## Safety Statement
 
 This system is for personal research, system development, paper trading, and backtest simulation only.
 
-It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection, no QMT adapter, no PTrade adapter, no real broker credentials, and no live order placement path.
-
-## Installation
-
-Use Python 3.11 or higher.
-
-```bash
-python -m pip install -e ".[dev]"
-python -m pytest
-```
+It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection. It has no real network data source connection. It has no QMT adapter, no PTrade adapter, no real broker credentials, and no live order placement path.
 
 ## Configuration
 
@@ -29,37 +20,54 @@ Default configuration:
 config/default.yaml
 ```
 
-Use it explicitly:
+MVP 6 adds these sections:
 
-```bash
-python -m dorsey_as run-backtest --config config/default.yaml
-```
+* `data_source`: local CSV paths and provider metadata. Default mode is `local_csv`, provider is `sample_csv`, and `allow_network` is `false`.
+* `point_in_time`: `as_of_date`, disclosure-date filtering, future-disclosure blocking, and maximum financial lag.
+* `factor_audit`: controls component score, raw input, red flag, moat proxy, and valuation explanations.
+* `schema_validation`: controls required column, numeric field, duplicate key, and extra column checks.
 
-Key sections:
+No API token, password, secret, webhook, account, or paid data source credential is stored in the repository.
 
-* `scoring`: composite score weights. Weights must be non-negative and sum to `1.0`.
-* `portfolio`: max positions, max stock weight, max industry weight, and cash reserve.
-* `transaction_cost`: commission, minimum commission, stamp duty, and slippage.
-* `backtest`: initial cash, rebalance frequency, benchmark placeholder, and risk-free rate.
-* `data_quality`: stale thresholds and blocking switches for missing fields, look-ahead bias, and severe outliers.
-* `report`: enables Markdown/HTML output, equity curve chart, drawdown chart, trade table, holdings table, data quality table, and audit summary.
-* `notify`: default `enabled: false`, `mode: dry_run`, `channel: feishu`, `webhook_url_env: FEISHU_WEBHOOK_URL`.
-* `audit`: controls score, portfolio, backtest, rejected trade, and data quality audit logging.
+## Local Data Source Layer
 
-No webhook URL, token, secret, account, or broker credential is stored in the repository. If notification sending is ever explicitly enabled, the Feishu webhook must come from the `FEISHU_WEBHOOK_URL` environment variable. MVP 5 still does not perform real network sending by default.
-
-## Sample Data
-
-The MVP reads local CSV files from `data/sample/`:
+The current data source abstraction is preparation for future A-share data integration. MVP 6 implements only:
 
 ```text
-stock_basic.csv
-financial_snapshot.csv
-market_snapshot.csv
-historical_market_snapshot.csv
-trading_calendar.csv
-data_quality_cases.csv
+LocalCsvDataSource
 ```
+
+It validates local files and writes:
+
+```text
+data/output/data_source_manifest.csv
+data/output/schema_validation_report.csv
+```
+
+No network download is allowed. No real market-data provider is implemented.
+
+## Schema Validation
+
+Run:
+
+```bash
+python -m dorsey_as validate-schema --config config/default.yaml
+```
+
+The report fields are:
+
+```text
+file,check_type,status,severity,message
+```
+
+Validation covers:
+
+* Required columns.
+* Numeric field parsing.
+* Duplicate keys.
+* Extra column warnings.
+
+## Point-In-Time Data
 
 Financial snapshots include `report_date` and `disclosure_date`. At any `as_of_date`, the system may only use rows where:
 
@@ -67,85 +75,77 @@ Financial snapshots include `report_date` and `disclosure_date`. At any `as_of_d
 disclosure_date <= as_of_date
 ```
 
-This protects scoring and backtesting from look-ahead bias.
-
-## CLI Usage
-
-Check data quality:
-
-```bash
-python -m dorsey_as check-data-quality --config config/default.yaml
-```
-
-Generate stock scores:
-
-```bash
-python -m dorsey_as run-score --config config/default.yaml
-```
-
-Build a target portfolio:
-
-```bash
-python -m dorsey_as build-portfolio --config config/default.yaml
-```
-
-Run one paper rebalance:
-
-```bash
-python -m dorsey_as paper-rebalance --config config/default.yaml
-```
-
-Run the local quarterly backtest:
-
-```bash
-python -m dorsey_as run-backtest --config config/default.yaml
-```
-
-Generate Markdown and HTML reports from existing CSV outputs:
-
-```bash
-python -m dorsey_as generate-report --config config/default.yaml
-```
-
-Generate a dry-run notification summary:
-
-```bash
-python -m dorsey_as notify-summary --config config/default.yaml
-```
-
-Global data/output overrides:
-
-```bash
-python -m dorsey_as --data-dir data/sample --output-dir data/output run-backtest --config config/default.yaml
-```
-
-## Data Quality Layer
-
-The data quality gate runs before scoring, portfolio construction, paper rebalance, and each backtest rebalance date.
-
-Checks include:
-
-* Data availability.
-* Missing core fields.
-* Look-ahead bias via `disclosure_date`.
-* Stale financial data.
-* Severe outliers such as non-positive prices, invalid market cap, invalid PB, negative revenue, negative assets, invalid gross margin, and extreme net margin.
+If a report period is in the past but `disclosure_date` is later than `as_of_date`, that row is excluded as future disclosure. This protects scoring and backtesting from look-ahead bias.
 
 Output:
 
 ```text
-data/output/data_quality_report.csv
+data/output/point_in_time_snapshot.csv
 ```
 
-Backtest data-quality audit output:
+Fields:
 
 ```text
-data/output/backtest_audit_log.csv
+as_of_date,symbol,year,report_date,disclosure_date,visible,reason
 ```
 
-## Reports And Charts
+`run-score` and each backtest rebalance date use point-in-time visible financials.
 
-MVP 5 generates both Markdown and static HTML reports:
+## Factor Audit Drilldown
+
+MVP 6 writes:
+
+```text
+data/output/factor_audit_log.csv
+```
+
+Fields:
+
+```text
+run_id,timestamp,as_of_date,symbol,factor_group,factor_name,raw_value,normalized_value,component_score,weight,weighted_score,reason,severity
+```
+
+Groups include:
+
+* `quality`
+* `moat`
+* `valuation`
+* `risk`
+* `composite`
+
+The audit log explains why a stock scored well, scored poorly, or was blocked by red flags.
+
+## Explain Score
+
+Run:
+
+```bash
+python -m dorsey_as explain-score --symbol 600519.SH --config config/default.yaml
+```
+
+This reads `scores.csv` and `factor_audit_log.csv` and writes:
+
+```text
+data/output/explain_600519.SH.md
+```
+
+The explanation includes composite score, component scores, red flag status, top positive factors, top negative factors, valuation notes, moat proxy notes, limitations, and the safety statement.
+
+## CLI Usage
+
+```bash
+python -m dorsey_as validate-schema --config config/default.yaml
+python -m dorsey_as check-data-quality --config config/default.yaml
+python -m dorsey_as run-score --config config/default.yaml
+python -m dorsey_as explain-score --symbol 600519.SH --config config/default.yaml
+python -m dorsey_as run-backtest --config config/default.yaml
+python -m dorsey_as generate-report --config config/default.yaml
+python -m dorsey_as notify-summary --config config/default.yaml
+```
+
+## Reports
+
+Markdown and HTML reports are written to:
 
 ```text
 data/output/run_report.md
@@ -154,116 +154,78 @@ data/output/run_report.html
 data/output/backtest_report.html
 ```
 
-HTML reports use pure HTML/CSS/SVG. They do not depend on external CDNs or frontend frameworks.
+MVP 6 reports include:
 
-`backtest_report.html` includes:
-
-* Title and generated time.
+* Data source summary.
+* Schema validation summary.
+* Point-in-time data summary.
+* Future disclosure exclusion counts.
+* Factor audit summary.
+* Top score tables.
+* Excluded or blocked stock reasons where available.
+* Backtest metrics and charts.
 * Safety statement.
-* Config summary.
-* Backtest range, initial cash, and ending equity.
-* Total return, annualized return, max drawdown, Sharpe ratio, turnover, number of trades, and win rate.
-* Equity curve SVG chart.
-* Drawdown SVG chart.
-* Trade summary table.
-* Final holdings table.
-* Data quality summary.
-* Audit log summary.
-* Current limitations.
 
-If chart data is missing, the HTML report shows “Insufficient data, unable to generate chart” instead of crashing.
+## Notifications
 
-## Notification Summary
-
-MVP 5 adds a local notification summary workflow:
+Notification summary remains dry-run by default:
 
 ```text
 data/output/notify_payload.json
 data/output/notify_summary.md
 ```
 
-Default behavior:
+No real notification is sent unless explicitly configured in a later phase. If real sending is ever enabled, webhook values must come from environment variables and must not be committed.
 
-* `notify.enabled` is `false`.
-* `notify.mode` is `dry_run`.
-* No real notification is sent.
-* The system writes the payload and summary files for review.
+## Audit Logs
 
-If `notify.enabled=true` and `notify.mode=send` but `FEISHU_WEBHOOK_URL` is missing, the system refuses to send and reports the missing environment variable. No real webhook is stored in this repo.
-
-The notification summary includes data quality counts, total return, max drawdown, Sharpe ratio, number of trades, report paths, and the safety statement.
-
-## Decision Audit Log
-
-MVP 5 adds a broader decision audit log:
+MVP 6 writes:
 
 ```text
 data/output/decision_audit_log.csv
 ```
 
-Fields:
+New stages include:
 
-```text
-run_id,timestamp,stage,as_of_date,symbol,decision_type,decision,reason,input_summary,output_summary,severity
-```
+* `data_source`
+* `schema_validation`
+* `point_in_time`
+* `factor_audit`
+* `explain_score`
 
-Stages include data quality, scoring, portfolio, paper broker, backtest, reporting, and notify. The audit log records key decisions such as score generation, selected positions, skipped/rejected trades, report generation, and dry-run notifications.
+New decision types include:
 
-Audit records are sanitized and must not contain webhook URLs, tokens, secrets, or credentials.
+* `validate_schema`
+* `build_point_in_time`
+* `exclude_future_disclosure`
+* `explain_factor`
+* `generate_factor_audit`
 
-## Backtesting
-
-The local backtest validates research and portfolio rules before any real trading work exists.
-
-At each rebalance date, the engine:
-
-1. Runs data quality and look-ahead checks.
-2. Loads eligible point-in-time financial rows.
-3. Runs the configured scoring engine.
-4. Builds the configured target portfolio.
-5. Generates simulated trades.
-6. Applies A-share trading restrictions.
-7. Deducts configured transaction costs.
-8. Updates cash and holdings.
-9. Marks positions to market.
-10. Writes CSV outputs and reports.
-
-Backtest outputs:
-
-```text
-data/output/backtest_equity_curve.csv
-data/output/backtest_trades.csv
-data/output/backtest_holdings.csv
-data/output/backtest_metrics.csv
-data/output/backtest_audit_log.csv
-data/output/backtest_report.md
-data/output/backtest_report.html
-```
+Audit logs are sanitized and must not contain tokens, secrets, passwords, credentials, webhook URLs, real account data, or real broker information.
 
 ## Current Limitations
 
 * Only local sample CSV data is supported.
-* Config parsing supports the simple YAML shape used by `config/default.yaml`.
-* HTML reports are static and intentionally simple.
-* Charts are simple inline SVG charts without interaction.
-* Notification is dry-run by default; MVP 5 does not send real network notifications.
-* The backtest uses simple quarterly sample data, not a full daily A-share database.
-* Rebalance-day valuation uses MVP proxy market assumptions for fields not present in the historical close-price file.
+* No real network data source is implemented.
+* No paid data source is implemented.
 * No real broker integration exists.
 * No live trading mode exists.
+* HTML reports are static.
+* Backtest data is quarterly sample data, not a full daily A-share database.
+* Rebalance-day valuation still uses MVP proxy assumptions where point-in-time valuation fields are not present.
 
 ## Next Phase
 
-Recommended Phase 6 work:
+Recommended Phase 7 work:
 
-1. Add richer point-in-time valuation data.
-2. Add optional HTML chart styling and report templates.
-3. Add explicit, opt-in Feishu sending with integration tests using mocked network calls.
-4. Add deeper score factor drilldowns in audit logs and reports.
-5. Define broker adapter interfaces while keeping all live adapters disabled by default.
+1. Add richer point-in-time valuation snapshots.
+2. Add data-source adapter interfaces with mocked providers only.
+3. Add factor drilldown charts in HTML reports.
+4. Add stronger schema versioning and migration checks.
+5. Add explicit integration-test harnesses that mock any future network provider.
 
 ## Disclaimer
 
 This project is for personal research and system development only.
 
-It does not provide investment advice, does not guarantee returns, and does not support real-money trading.
+It does not provide investment advice, does not guarantee returns, does not support real-money trading, has no real broker connection, and has no real network data source connection.

@@ -10,9 +10,13 @@ from dorsey_as.config.models import (
     AuditConfig,
     BacktestConfig,
     DataQualityConfig,
+    DataSourceConfig,
+    FactorAuditConfig,
     NotifyConfig,
+    PointInTimeConfig,
     PortfolioConfig,
     ReportConfig,
+    SchemaValidationConfig,
     ScoringConfig,
     TransactionCostConfig,
 )
@@ -103,6 +107,10 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         report=_section(ReportConfig, raw.get("report")),
         notify=_section(NotifyConfig, raw.get("notify")),
         audit=_section(AuditConfig, raw.get("audit")),
+        data_source=_section(DataSourceConfig, raw.get("data_source")),
+        point_in_time=_section(PointInTimeConfig, raw.get("point_in_time")),
+        factor_audit=_section(FactorAuditConfig, raw.get("factor_audit")),
+        schema_validation=_section(SchemaValidationConfig, raw.get("schema_validation")),
     )
     validate_config(config)
     return config
@@ -151,3 +159,11 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("notify.mode must be dry_run or send.")
     if config.notify.channel != "feishu":
         raise ConfigError("notify.channel currently only supports feishu.")
+    if config.data_source.mode != "local_csv":
+        raise ConfigError("data_source.mode must be local_csv in this MVP.")
+    if config.data_source.allow_network:
+        raise ConfigError("data_source.allow_network must remain false in this MVP.")
+    if config.data_source.provider != "sample_csv":
+        raise ConfigError("data_source.provider must be sample_csv in this MVP.")
+    if config.point_in_time.max_financial_lag_days <= 0:
+        raise ConfigError("point_in_time.max_financial_lag_days must be positive.")
