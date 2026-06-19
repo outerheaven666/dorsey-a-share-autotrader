@@ -1,0 +1,8 @@
+execution_policy:
+  mode: backtest
+  allow_live_trading: false
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: false
+  allow_paper_trading: true
+  allow_backtest: true

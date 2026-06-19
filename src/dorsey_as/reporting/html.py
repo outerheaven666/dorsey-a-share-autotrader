@@ -62,6 +62,7 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
     mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
+    safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
     visual_exists = (output_dir / "provider_contract_diff.html").exists()
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
@@ -77,6 +78,7 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
             f"<section><h2>Schema Versioning Summary</h2><p>Current contract version: {escape(config.schema_versioning.current_version)}; baseline: {escape(config.schema_versioning.baseline_contract)}; candidate: {escape(config.schema_versioning.candidate_contract)}; disabled provider template: {'disabled' if not config.provider_templates.real_provider_templates_enabled else 'enabled'}.</p></section>",
             f"<section><h2>Contract Diff Summary</h2><p>Rows: {len(contract_diff_rows)}; breaking changes: {sum(1 for row in contract_diff_rows if row.get('breaking') == 'True')}; additive changes: {sum(1 for row in contract_diff_rows if row.get('change_type', '').startswith('additive'))}; real data source status: not enabled; network data source status: disabled.</p></section>",
             f"<section><h2>Schema Migration Summary</h2><p>Current version: {escape(config.schema_migration.current_version)}; target version: {escape(config.schema_migration.target_version)}; migration plan: {escape(config.schema_migration.migration_plan)}; compatibility window: {config.schema_migration.compatibility_window_days} days; expired deprecations: {sum(1 for row in migration_rows if row.get('check_type') == 'expired_deprecation')}; contract diff visualization: {'generated' if visual_exists else 'not generated'}.</p></section>",
+            f"<section><h2>Pre-Live Safety Summary</h2><p>Execution policy mode: {escape(config.execution_policy.mode)}; live trading blocked: true; real broker blocked: true; real network data blocked: true; dry-run notify allowed: {config.execution_policy.allow_dry_run_notify}; paper trading allowed: {config.execution_policy.allow_paper_trading}; backtest allowed: {config.execution_policy.allow_backtest}; safety acknowledgement: {'configured' if config.pre_live_safety.safety_ack_phrase else 'missing'}; safety rows: {len(safety_rows)}.</p></section>",
             f"<section><h2>Data Quality Check Result</h2><p>Blocking issues: {blocking_count}; warnings: {warning_count}</p></section>",
             f"<section><h2>Schema Validation Summary</h2><p>Rows: {len(schema_rows)}; failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}; warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}</p></section>",
             f"<section><h2>Point-in-Time Summary</h2><p>Snapshot rows: {len(pit_rows)}; visible rows: {sum(1 for row in pit_rows if row.get('visible') == 'True')}; future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}</p></section>",
@@ -110,6 +112,7 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
+    safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -128,7 +131,7 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
             "<section><h2>Config Summary</h2>" + _config_summary(config) + "</section>",
             f"<section><h2>Backtest Summary</h2><p>Range: {escape(start_date)} to {escape(end_date)}; Initial cash: {config.backtest.initial_cash}; Ending equity: {escape(end_equity)}</p></section>",
             "<section><h2>Backtest Metrics</h2><div class=\"metric-grid\">" + metric_cards + "</div></section>",
-            f"<section><h2>Data Source Boundary</h2><p>Backtest uses local_csv sample data only. Mock provider is contract-test only and is not used for backtest trading simulation. Network data sources are disabled. Contract version used: {escape(config.schema_versioning.current_version)}. Provider contract rows: {len(provider_contract_rows)}. Contract diff rows: {len(contract_diff_rows)}. Schema migration rows: {len(migration_rows)}. Contract diff and migration metadata do not participate in trading decisions.</p></section>",
+            f"<section><h2>Data Source Boundary</h2><p>Backtest uses local_csv sample data only. Mock provider is contract-test only and is not used for backtest trading simulation. Network data sources are disabled. Contract version used: {escape(config.schema_versioning.current_version)}. Provider contract rows: {len(provider_contract_rows)}. Contract diff rows: {len(contract_diff_rows)}. Schema migration rows: {len(migration_rows)}. Contract diff and migration metadata do not participate in trading decisions. Execution policy mode: {escape(config.execution_policy.mode)}. Current system has no live trading, no real broker, no real orders, and no real network data. Pre-live safety rows: {len(safety_rows)}.</p></section>",
             "<section><h2>Equity Curve Chart</h2>" + render_equity_curve_chart(output_dir / "backtest_equity_curve.csv") + "</section>",
             "<section><h2>Drawdown Chart</h2>" + render_drawdown_chart(output_dir / "backtest_equity_curve.csv") + "</section>",
             "<section><h2>Trade Summary Table</h2>"

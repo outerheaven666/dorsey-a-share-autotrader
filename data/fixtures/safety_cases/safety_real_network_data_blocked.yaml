@@ -1,0 +1,6 @@
+execution_policy:
+  mode: research_only
+  allow_live_trading: false
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: true

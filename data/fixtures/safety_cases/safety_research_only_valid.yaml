@@ -1,0 +1,20 @@
+pre_live_safety:
+  enabled: true
+  default_mode: research_only
+  block_live_trading: true
+  block_real_broker: true
+  block_real_network_provider: true
+  block_missing_safety_ack: true
+  safety_ack_phrase: "I understand this system is research-only and live trading is disabled"
+
+execution_policy:
+  mode: research_only
+  allow_live_trading: false
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: false
+  allow_dry_run_notify: true
+  allow_paper_trading: true
+  allow_backtest: true
+  allow_local_csv: true
+  allow_mock_provider: true

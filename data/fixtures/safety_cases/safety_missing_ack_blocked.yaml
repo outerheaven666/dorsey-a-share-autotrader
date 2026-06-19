@@ -1,0 +1,12 @@
+pre_live_safety:
+  enabled: true
+  require_manual_confirmation: true
+  block_missing_safety_ack: true
+  safety_ack_phrase: ""
+
+execution_policy:
+  mode: live
+  allow_live_trading: false
+  allow_real_broker: false
+  allow_real_orders: false
+  allow_real_network_data: false
