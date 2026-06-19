@@ -6,15 +6,18 @@ from typing import Any
 
 from dorsey_as.config.defaults import PROJECT_ROOT
 from dorsey_as.config.models import (
+    AdapterContractConfig,
     AppConfig,
     AuditConfig,
     BacktestConfig,
     DataQualityConfig,
     DataSourceConfig,
     FactorAuditConfig,
+    FieldMappingConfig,
     NotifyConfig,
     PointInTimeConfig,
     PortfolioConfig,
+    ProviderTestsConfig,
     ReportConfig,
     SchemaValidationConfig,
     ScoringConfig,
@@ -111,6 +114,9 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         point_in_time=_section(PointInTimeConfig, raw.get("point_in_time")),
         factor_audit=_section(FactorAuditConfig, raw.get("factor_audit")),
         schema_validation=_section(SchemaValidationConfig, raw.get("schema_validation")),
+        adapter_contract=_section(AdapterContractConfig, raw.get("adapter_contract")),
+        field_mapping=_section(FieldMappingConfig, raw.get("field_mapping")),
+        provider_tests=_section(ProviderTestsConfig, raw.get("provider_tests")),
     )
     validate_config(config)
     return config
@@ -167,3 +173,11 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("data_source.provider must be sample_csv in this MVP.")
     if config.point_in_time.max_financial_lag_days <= 0:
         raise ConfigError("point_in_time.max_financial_lag_days must be positive.")
+    if config.adapter_contract.mode != "mock_only":
+        raise ConfigError("adapter_contract.mode must be mock_only in this MVP.")
+    if config.adapter_contract.allow_network:
+        raise ConfigError("adapter_contract.allow_network must remain false in this MVP.")
+    if config.adapter_contract.allow_real_provider:
+        raise ConfigError("adapter_contract.allow_real_provider must remain false in this MVP.")
+    if config.adapter_contract.provider != "mock_a_share":
+        raise ConfigError("adapter_contract.provider must be mock_a_share in this MVP.")

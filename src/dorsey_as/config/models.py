@@ -125,6 +125,38 @@ class SchemaValidationConfig:
 
 
 @dataclass
+class AdapterContractConfig:
+    enabled: bool = True
+    mode: str = "mock_only"
+    allow_network: bool = False
+    allow_real_provider: bool = False
+    provider: str = "mock_a_share"
+    contract_version: str = "v1"
+    fixture_dir: str = "data/fixtures/mock_provider"
+    output_dir: str = "data/output"
+
+
+@dataclass
+class FieldMappingConfig:
+    enabled: bool = True
+    strict_required_fields: bool = True
+    allow_extra_fields: bool = True
+    normalize_symbol: bool = True
+    normalize_dates: bool = True
+
+
+@dataclass
+class ProviderTestsConfig:
+    enabled: bool = True
+    require_stock_basic: bool = True
+    require_financial_snapshot: bool = True
+    require_market_snapshot: bool = True
+    require_historical_market_snapshot: bool = True
+    require_trading_calendar: bool = True
+    block_on_contract_failure: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -138,3 +170,6 @@ class AppConfig:
     point_in_time: PointInTimeConfig = field(default_factory=PointInTimeConfig)
     factor_audit: FactorAuditConfig = field(default_factory=FactorAuditConfig)
     schema_validation: SchemaValidationConfig = field(default_factory=SchemaValidationConfig)
+    adapter_contract: AdapterContractConfig = field(default_factory=AdapterContractConfig)
+    field_mapping: FieldMappingConfig = field(default_factory=FieldMappingConfig)
+    provider_tests: ProviderTestsConfig = field(default_factory=ProviderTestsConfig)

@@ -4,6 +4,7 @@ import argparse
 import csv
 from pathlib import Path
 
+from dorsey_as.adapters.validation import validate_provider_contract
 from dorsey_as.audit import append_audit_record, new_run_id
 from dorsey_as.backtest.engine import BacktestEngine
 from dorsey_as.backtest.models import BacktestConfig as RuntimeBacktestConfig
@@ -128,6 +129,12 @@ def _audit(
 
 
 def _load_checked_sample_data(data_dir: Path, output_dir: Path, config: AppConfig, as_of_date: str | None = None):
+    if config.schema_validation.enabled:
+        schema_report = validate_csv_schema(LocalCsvDataSource(config.data_source), config.schema_validation, output_dir)
+        if not schema_report.passed:
+            reasons = "; ".join(row.message for row in schema_report.rows if row.status == "fail")
+            print(f"Schema validation failed: {reasons}")
+            raise SystemExit(1)
     stocks, financials, markets = load_sample_data(data_dir)
     effective_as_of = as_of_date or config.point_in_time.as_of_date or _default_as_of_date(markets)
     pit = build_point_in_time_snapshot(financials, effective_as_of, config.point_in_time, output_dir)
@@ -192,6 +199,61 @@ def validate_schema(data_dir: Path, output_dir: Path, config_path: Path | None =
     if not report.passed:
         raise SystemExit(1)
     return output_dir / "schema_validation_report.csv"
+
+
+def validate_provider_contract_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("provider-contract")
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="provider_registry",
+        decision_type="reject_network_access",
+        decision="allow_mock_only",
+        reason="adapter_contract.allow_network=false and allow_real_provider=false",
+        input_summary=f"provider={config.adapter_contract.provider}, mode={config.adapter_contract.mode}",
+    )
+    report = validate_provider_contract(config, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="adapter_contract",
+        decision_type="validate_provider_contract",
+        decision="pass" if report.passed else "block",
+        reason=f"provider={report.provider}, failures={sum(1 for row in report.rows if row.status == 'fail')}",
+        output_summary=str(output_dir / "provider_contract_report.csv"),
+        severity="info" if report.passed else "error",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="field_mapping",
+        decision_type="map_fields",
+        decision="write_adapter_mapped_preview",
+        reason=f"mapped_rows={len(report.mapped_preview)}",
+        output_summary=str(output_dir / "adapter_mapped_preview.csv"),
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="mock_provider",
+        decision_type="validate_provider_contract",
+        decision="fixture_provider_only",
+        reason="mock provider is used only for adapter contract testing",
+        output_summary=str(output_dir / "provider_contract_summary.md"),
+    )
+    print(
+        "Provider contract "
+        f"{'passed' if report.passed else 'failed'}; "
+        f"wrote report to {output_dir / 'provider_contract_report.csv'}"
+    )
+    if not report.passed and config.provider_tests.block_on_contract_failure:
+        raise SystemExit(1)
+    return output_dir / "provider_contract_report.csv"
 
 
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
@@ -421,6 +483,54 @@ def explain_score(data_dir: Path, output_dir: Path, symbol: str, config_path: Pa
     return output_path
 
 
+def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("provider-explain")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Provider Explanation",
+        "",
+        f"- Current data_source.mode: {config.data_source.mode}",
+        f"- Current data_source.provider: {config.data_source.provider}",
+        f"- Current adapter_contract.mode: {config.adapter_contract.mode}",
+        f"- Current adapter provider: {config.adapter_contract.provider}",
+        f"- allow_network: {str(config.adapter_contract.allow_network).lower()}",
+        f"- allow_real_provider: {str(config.adapter_contract.allow_real_provider).lower()}",
+        "",
+        "## Why There Is No Real Provider",
+        "",
+        "The current phase validates adapter contracts with local fake fixtures only. Mock provider data is used to test field mapping, schema compatibility, point-in-time compatibility, and failure reporting before any external integration is considered.",
+        "",
+        "## Future Provider Contract Requirements",
+        "",
+        "- Implement the DataProvider contract methods.",
+        "- Provide stock basic, financial snapshot, market snapshot, historical market snapshot, and trading calendar datasets.",
+        "- Map fields into the internal schema.",
+        "- Normalize symbols, dates, numeric values, and boolean flags.",
+        "- Provide disclosure_date for point-in-time financial data.",
+        "- Pass schema validation, duplicate-key checks, and point-in-time checks.",
+        "- Keep network and real-provider paths disabled by default until a later explicitly approved milestone.",
+        "",
+        "## Safety Statement",
+        "",
+        "No real-money trading is supported. No real broker connection exists. No real network data source connection exists. Mock provider is only used for contract testing and is not an actual market data source. This system is for personal research, system development, paper trading, and backtest simulation only. It does not provide investment advice and does not guarantee returns.",
+    ]
+    output_path = output_dir / "provider_explanation.md"
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="adapter_contract",
+        decision_type="reject_real_provider",
+        decision="explain_provider_boundary",
+        reason="real providers are disabled; mock provider is contract-test only",
+        output_summary=str(output_path),
+    )
+    print(f"Wrote provider explanation to {output_path}")
+    return output_path
+
+
 def generate_report(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
     config = load_config(config_path)
     run_id = new_run_id("report")
@@ -488,6 +598,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(report)
     notify = subparsers.add_parser("notify-summary", help="Generate dry-run notification summary files.")
     _add_config_arg(notify)
+    provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
+    _add_config_arg(provider_contract)
+    provider_explain = subparsers.add_parser("explain-provider", help="Explain current data provider safety boundary.")
+    _add_config_arg(provider_explain)
     explain = subparsers.add_parser("explain-score", help="Explain one stock score from scores.csv and factor_audit_log.csv.")
     _add_config_arg(explain)
     explain.add_argument("--symbol", required=True)
@@ -513,6 +627,10 @@ def main(argv: list[str] | None = None) -> None:
         generate_report(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "notify-summary":
         notify_summary(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "validate-provider-contract":
+        validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "explain-provider":
+        explain_provider(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "explain-score":
         explain_score(args.data_dir, args.output_dir, args.symbol, config_path=args.config)
     else:
