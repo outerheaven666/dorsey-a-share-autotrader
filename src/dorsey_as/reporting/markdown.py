@@ -37,6 +37,8 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
     factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     manifest_rows = read_csv_rows(output_dir / "data_source_manifest.csv")
+    provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
+    mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
 
@@ -57,6 +59,16 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         "",
         f"- Manifest rows: {len(manifest_rows)}",
         "- Mode: local_csv only; network access is disabled.",
+        "",
+        "## Adapter Contract Summary",
+        "",
+        f"- Adapter mode: {config.adapter_contract.mode}",
+        f"- Mock provider: {config.adapter_contract.provider}",
+        f"- Network data source status: disabled",
+        f"- Real data provider status: not enabled",
+        f"- Provider contract validation rows: {len(provider_contract_rows)}",
+        f"- Provider contract failures: {sum(1 for row in provider_contract_rows if row.get('status') == 'fail')}",
+        f"- Field mapping preview rows: {len(mapped_preview_rows)}",
         "",
         "## Schema Validation Summary",
         "",
@@ -129,6 +141,7 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
     schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
     factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
+    provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -158,6 +171,13 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         "",
         f"- Blocking issue count: {blocking_count}",
         f"- Warning count: {warning_count}",
+        "",
+        "## Data Source Boundary",
+        "",
+        "- Backtest uses local_csv sample data only.",
+        "- Mock provider is used only for adapter contract tests.",
+        "- Network data sources and real providers are disabled.",
+        f"- Provider contract validation rows: {len(provider_contract_rows)}",
         "",
         "## Point-in-Time Summary",
         "",

@@ -95,3 +95,29 @@ schema_validation:
   block_on_invalid_numeric_fields: true
   block_on_duplicate_keys: true
   warn_on_extra_columns: true
+
+adapter_contract:
+  enabled: true
+  mode: mock_only
+  allow_network: false
+  allow_real_provider: false
+  provider: mock_a_share
+  contract_version: v1
+  fixture_dir: data/fixtures/mock_provider
+  output_dir: data/output
+
+field_mapping:
+  enabled: true
+  strict_required_fields: true
+  allow_extra_fields: true
+  normalize_symbol: true
+  normalize_dates: true
+
+provider_tests:
+  enabled: true
+  require_stock_basic: true
+  require_financial_snapshot: true
+  require_market_snapshot: true
+  require_historical_market_snapshot: true
+  require_trading_calendar: true
+  block_on_contract_failure: true

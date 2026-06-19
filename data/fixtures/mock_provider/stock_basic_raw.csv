@@ -1,0 +1,4 @@
+ts_code,stock_name,industry_name,st_flag,suspend_flag,vendor_extra
+600519SH,Mock Kweichow,Consumer,N,0,fixture-only
+000001SZ,Mock Ping An,Bank,N,0,fixture-only
+300750SZ,Mock CATL,Manufacturing,N,0,fixture-only
