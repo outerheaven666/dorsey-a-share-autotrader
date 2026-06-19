@@ -48,11 +48,37 @@ class DataQualityConfig:
 @dataclass
 class ReportConfig:
     output_format: str = "markdown"
+    output_formats: list[str] = field(default_factory=lambda: ["markdown", "html"])
     include_data_quality_summary: bool = True
     include_top_scores: bool = True
     include_trade_summary: bool = True
     include_backtest_metrics: bool = True
     include_holdings_snapshot: bool = True
+    include_equity_curve_chart: bool = True
+    include_drawdown_chart: bool = True
+    include_trade_table: bool = True
+    include_holdings_table: bool = True
+    include_data_quality_table: bool = True
+    include_audit_summary: bool = True
+
+
+@dataclass
+class NotifyConfig:
+    enabled: bool = False
+    mode: str = "dry_run"
+    channel: str = "feishu"
+    webhook_url_env: str = "FEISHU_WEBHOOK_URL"
+    write_payload_to_file: bool = True
+
+
+@dataclass
+class AuditConfig:
+    enabled: bool = True
+    include_score_decisions: bool = True
+    include_portfolio_decisions: bool = True
+    include_backtest_decisions: bool = True
+    include_rejected_trades: bool = True
+    include_data_quality_issues: bool = True
 
 
 @dataclass
@@ -63,3 +89,5 @@ class AppConfig:
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     data_quality: DataQualityConfig = field(default_factory=DataQualityConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
+    audit: AuditConfig = field(default_factory=AuditConfig)
