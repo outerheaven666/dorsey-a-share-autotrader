@@ -60,6 +60,7 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
     manifest_rows = read_csv_rows(output_dir / "data_source_manifest.csv")
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
     mapped_preview_rows = read_csv_rows(output_dir / "adapter_mapped_preview.csv")
+    contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
     body = "\n".join(
@@ -71,6 +72,8 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
             "<section><h2>Config Summary</h2>" + _config_summary(config) + "</section>",
             f"<section><h2>Data Source Summary</h2><p>Manifest rows: {len(manifest_rows)}. Mode is local_csv only; network access is disabled.</p></section>",
             f"<section><h2>Adapter Contract Summary</h2><p>Mode: {escape(config.adapter_contract.mode)}; mock provider: {escape(config.adapter_contract.provider)}; real data source status: not enabled; network data source status: disabled; contract rows: {len(provider_contract_rows)}; mapping preview rows: {len(mapped_preview_rows)}.</p></section>",
+            f"<section><h2>Schema Versioning Summary</h2><p>Current contract version: {escape(config.schema_versioning.current_version)}; baseline: {escape(config.schema_versioning.baseline_contract)}; candidate: {escape(config.schema_versioning.candidate_contract)}; disabled provider template: {'disabled' if not config.provider_templates.real_provider_templates_enabled else 'enabled'}.</p></section>",
+            f"<section><h2>Contract Diff Summary</h2><p>Rows: {len(contract_diff_rows)}; breaking changes: {sum(1 for row in contract_diff_rows if row.get('breaking') == 'True')}; additive changes: {sum(1 for row in contract_diff_rows if row.get('change_type', '').startswith('additive'))}; real data source status: not enabled; network data source status: disabled.</p></section>",
             f"<section><h2>Data Quality Check Result</h2><p>Blocking issues: {blocking_count}; warnings: {warning_count}</p></section>",
             f"<section><h2>Schema Validation Summary</h2><p>Rows: {len(schema_rows)}; failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}; warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}</p></section>",
             f"<section><h2>Point-in-Time Summary</h2><p>Snapshot rows: {len(pit_rows)}; visible rows: {sum(1 for row in pit_rows if row.get('visible') == 'True')}; future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}</p></section>",
@@ -102,6 +105,7 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
     pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
     factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     provider_contract_rows = read_csv_rows(output_dir / "provider_contract_report.csv")
+    contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -120,7 +124,7 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
             "<section><h2>Config Summary</h2>" + _config_summary(config) + "</section>",
             f"<section><h2>Backtest Summary</h2><p>Range: {escape(start_date)} to {escape(end_date)}; Initial cash: {config.backtest.initial_cash}; Ending equity: {escape(end_equity)}</p></section>",
             "<section><h2>Backtest Metrics</h2><div class=\"metric-grid\">" + metric_cards + "</div></section>",
-            f"<section><h2>Data Source Boundary</h2><p>Backtest uses local_csv sample data only. Mock provider is contract-test only and is not used for backtest trading simulation. Network data sources are disabled. Provider contract rows: {len(provider_contract_rows)}.</p></section>",
+            f"<section><h2>Data Source Boundary</h2><p>Backtest uses local_csv sample data only. Mock provider is contract-test only and is not used for backtest trading simulation. Network data sources are disabled. Contract version used: {escape(config.schema_versioning.current_version)}. Provider contract rows: {len(provider_contract_rows)}. Contract diff rows: {len(contract_diff_rows)}. Contract diff does not participate in trading decisions.</p></section>",
             "<section><h2>Equity Curve Chart</h2>" + render_equity_curve_chart(output_dir / "backtest_equity_curve.csv") + "</section>",
             "<section><h2>Drawdown Chart</h2>" + render_drawdown_chart(output_dir / "backtest_equity_curve.csv") + "</section>",
             "<section><h2>Trade Summary Table</h2>"

@@ -1,0 +1,40 @@
+version: v1
+description: Breaking fixture that changes a required field type.
+datasets:
+  market_snapshot:
+    version: v1
+    description: close_price should remain numeric.
+    required_fields:
+      - symbol
+      - trade_date
+      - close_price
+      - market_cap
+      - pe
+      - pb
+      - ev_to_fcf
+      - fcf_yield
+      - dividend_yield
+    optional_fields: []
+    field_types:
+      symbol: string
+      trade_date: date
+      close_price: string
+      market_cap: numeric
+      pe: numeric
+      pb: numeric
+      ev_to_fcf: numeric
+      fcf_yield: numeric
+      dividend_yield: numeric
+    date_fields:
+      - trade_date
+    numeric_fields:
+      - market_cap
+      - pe
+      - pb
+      - ev_to_fcf
+      - fcf_yield
+      - dividend_yield
+    boolean_fields: []
+    primary_key:
+      - symbol
+      - trade_date

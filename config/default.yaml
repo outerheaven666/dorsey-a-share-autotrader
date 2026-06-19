@@ -121,3 +121,28 @@ provider_tests:
   require_historical_market_snapshot: true
   require_trading_calendar: true
   block_on_contract_failure: true
+
+schema_versioning:
+  enabled: true
+  current_version: v1
+  schema_dir: config/schemas
+  baseline_contract: config/schemas/provider_contract_v1.yaml
+  candidate_contract: config/schemas/provider_contract_candidate.yaml
+  block_on_breaking_change: true
+  warn_on_additive_change: true
+  allow_documented_extra_fields: true
+
+contract_diff:
+  enabled: true
+  output_dir: data/output
+  compare_required_fields: true
+  compare_field_types: true
+  compare_date_fields: true
+  compare_numeric_fields: true
+  compare_boolean_fields: true
+  compare_dataset_presence: true
+
+provider_templates:
+  enabled: true
+  real_provider_templates_enabled: false
+  templates_are_non_executable: true

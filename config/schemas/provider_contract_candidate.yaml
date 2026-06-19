@@ -1,0 +1,203 @@
+version: v1
+description: Candidate contract with compatible documented optional additions.
+datasets:
+  stock_basic:
+    version: v1
+    description: Basic A-share identity and trading status fields.
+    required_fields:
+      - symbol
+      - name
+      - industry
+      - is_st
+      - is_suspended
+    optional_fields:
+      - listing_date
+    field_types:
+      symbol: string
+      name: string
+      industry: string
+      is_st: boolean
+      is_suspended: boolean
+      listing_date: date
+    date_fields:
+      - listing_date
+    numeric_fields: []
+    boolean_fields:
+      - is_st
+      - is_suspended
+    primary_key:
+      - symbol
+  financial_snapshot:
+    version: v1
+    description: Point-in-time compatible annual financial snapshot.
+    required_fields:
+      - symbol
+      - year
+      - revenue
+      - net_profit
+      - operating_cash_flow
+      - free_cash_flow
+      - total_assets
+      - total_liabilities
+      - equity
+      - accounts_receivable
+      - inventory
+      - goodwill
+      - non_recurring_profit
+      - roe
+      - roic
+      - gross_margin
+      - net_margin
+      - report_date
+      - disclosure_date
+    optional_fields:
+      - rd_expense
+      - selling_expense
+      - audit_opinion
+    field_types:
+      symbol: string
+      year: numeric
+      revenue: numeric
+      net_profit: numeric
+      operating_cash_flow: numeric
+      free_cash_flow: numeric
+      total_assets: numeric
+      total_liabilities: numeric
+      equity: numeric
+      accounts_receivable: numeric
+      inventory: numeric
+      goodwill: numeric
+      non_recurring_profit: numeric
+      roe: numeric
+      roic: numeric
+      gross_margin: numeric
+      net_margin: numeric
+      report_date: date
+      disclosure_date: date
+      rd_expense: numeric
+      selling_expense: numeric
+      audit_opinion: string
+    date_fields:
+      - report_date
+      - disclosure_date
+    numeric_fields:
+      - year
+      - revenue
+      - net_profit
+      - operating_cash_flow
+      - free_cash_flow
+      - total_assets
+      - total_liabilities
+      - equity
+      - accounts_receivable
+      - inventory
+      - goodwill
+      - non_recurring_profit
+      - roe
+      - roic
+      - gross_margin
+      - net_margin
+      - rd_expense
+      - selling_expense
+    boolean_fields: []
+    primary_key:
+      - symbol
+      - year
+  market_snapshot:
+    version: v1
+    description: Latest market and valuation snapshot.
+    required_fields:
+      - symbol
+      - trade_date
+      - close_price
+      - market_cap
+      - pe
+      - pb
+      - ev_to_fcf
+      - fcf_yield
+      - dividend_yield
+    optional_fields:
+      - turnover_rate
+    field_types:
+      symbol: string
+      trade_date: date
+      close_price: numeric
+      market_cap: numeric
+      pe: numeric
+      pb: numeric
+      ev_to_fcf: numeric
+      fcf_yield: numeric
+      dividend_yield: numeric
+      turnover_rate: numeric
+    date_fields:
+      - trade_date
+    numeric_fields:
+      - close_price
+      - market_cap
+      - pe
+      - pb
+      - ev_to_fcf
+      - fcf_yield
+      - dividend_yield
+      - turnover_rate
+    boolean_fields: []
+    primary_key:
+      - symbol
+      - trade_date
+  historical_market_snapshot:
+    version: v1
+    description: Historical market prices and A-share trading status flags.
+    required_fields:
+      - symbol
+      - trade_date
+      - close_price
+      - is_suspended
+      - is_limit_up
+      - is_limit_down
+      - volume
+      - amount
+    optional_fields:
+      - vwap
+    field_types:
+      symbol: string
+      trade_date: date
+      close_price: numeric
+      is_suspended: boolean
+      is_limit_up: boolean
+      is_limit_down: boolean
+      volume: numeric
+      amount: numeric
+      vwap: numeric
+    date_fields:
+      - trade_date
+    numeric_fields:
+      - close_price
+      - volume
+      - amount
+      - vwap
+    boolean_fields:
+      - is_suspended
+      - is_limit_up
+      - is_limit_down
+    primary_key:
+      - symbol
+      - trade_date
+  trading_calendar:
+    version: v1
+    description: Trading calendar with rebalance markers.
+    required_fields:
+      - trade_date
+      - is_rebalance_date
+    optional_fields:
+      - market_phase
+    field_types:
+      trade_date: date
+      is_rebalance_date: boolean
+      market_phase: string
+    date_fields:
+      - trade_date
+    numeric_fields: []
+    boolean_fields:
+      - is_rebalance_date
+    primary_key:
+      - trade_date
