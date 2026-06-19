@@ -12,10 +12,14 @@ from dorsey_as.config.loader import DEFAULT_CONFIG_PATH, load_config
 from dorsey_as.config.models import AppConfig
 from dorsey_as.config.defaults import DEFAULT_OUTPUT_DIR, DEFAULT_SAMPLE_DATA_DIR
 from dorsey_as.data.loaders import load_sample_data
+from dorsey_as.data_source.local_csv import LocalCsvDataSource
+from dorsey_as.data_source.schema import validate_csv_schema
 from dorsey_as.data_quality.report import write_data_quality_report
-from dorsey_as.data_quality.validators import filter_financials_as_of, run_data_quality_checks
+from dorsey_as.data_quality.validators import run_data_quality_checks
+from dorsey_as.factors.audit import write_factor_audit_log
 from dorsey_as.models import ScoreResult, TargetPortfolio
 from dorsey_as.notify.summary import generate_notify_summary
+from dorsey_as.point_in_time import build_point_in_time_snapshot
 from dorsey_as.portfolio.constructor import build_target_portfolio
 from dorsey_as.reporting.html import generate_backtest_html_report, generate_run_html_report
 from dorsey_as.reporting.markdown import generate_backtest_report, generate_run_report
@@ -125,14 +129,15 @@ def _audit(
 
 def _load_checked_sample_data(data_dir: Path, output_dir: Path, config: AppConfig, as_of_date: str | None = None):
     stocks, financials, markets = load_sample_data(data_dir)
-    effective_as_of = as_of_date or _default_as_of_date(markets)
+    effective_as_of = as_of_date or config.point_in_time.as_of_date or _default_as_of_date(markets)
+    pit = build_point_in_time_snapshot(financials, effective_as_of, config.point_in_time, output_dir)
     report = run_data_quality_checks(effective_as_of, stocks, financials, markets, data_quality_config=config.data_quality)
     write_data_quality_report(report, output_dir / "data_quality_report.csv")
     if not report.passed:
         reasons = "; ".join(issue.message for issue in report.blocking_issues)
         print(f"Data quality check failed for {effective_as_of}: {reasons}")
         raise SystemExit(1)
-    return stocks, filter_financials_as_of(financials, effective_as_of), markets, report
+    return stocks, pit.visible_financials, markets, report
 
 
 def _build_scores_and_portfolio(data_dir: Path, output_dir: Path, config: AppConfig, as_of_date: str | None = None) -> tuple[list[ScoreResult], TargetPortfolio, dict[str, float]]:
@@ -147,7 +152,7 @@ def check_data_quality(data_dir: Path, output_dir: Path, as_of_date: str | None 
     config = load_config(config_path)
     run_id = new_run_id("data-quality")
     stocks, financials, markets = load_sample_data(data_dir)
-    effective_as_of = as_of_date or _default_as_of_date(markets)
+    effective_as_of = as_of_date or config.point_in_time.as_of_date or _default_as_of_date(markets)
     report = run_data_quality_checks(effective_as_of, stocks, financials, markets, data_quality_config=config.data_quality)
     output_path = output_dir / "data_quality_report.csv"
     write_data_quality_report(report, output_path)
@@ -168,6 +173,27 @@ def check_data_quality(data_dir: Path, output_dir: Path, as_of_date: str | None 
     return output_path
 
 
+def validate_schema(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("schema")
+    report = validate_csv_schema(LocalCsvDataSource(config.data_source), config.schema_validation, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="schema_validation",
+        decision_type="validate_schema",
+        decision="pass" if report.passed else "block",
+        reason=f"rows={len(report.rows)}",
+        output_summary=str(output_dir / "schema_validation_report.csv"),
+        severity="info" if report.passed else "error",
+    )
+    print(f"Schema validation {'passed' if report.passed else 'failed'}; wrote report to {output_dir / 'schema_validation_report.csv'}")
+    if not report.passed:
+        raise SystemExit(1)
+    return output_dir / "schema_validation_report.csv"
+
+
 def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, config_path: Path | None = None) -> Path:
     config = load_config(config_path)
     run_id = new_run_id("score")
@@ -175,6 +201,19 @@ def run_score(data_dir: Path, output_dir: Path, as_of_date: str | None = None, c
     scores = calculate_scores(stocks, financials, markets, scoring_config=config.scoring)
     output_path = output_dir / "scores.csv"
     _write_scores(output_path, scores)
+    if config.factor_audit.enabled:
+        write_factor_audit_log(scores, stocks, financials, markets, output_dir, config, as_of_date or _default_as_of_date(markets), run_id)
+        _audit(
+            output_dir,
+            config,
+            run_id=run_id,
+            stage="factor_audit",
+            as_of_date=as_of_date or _default_as_of_date(markets),
+            decision_type="generate_factor_audit",
+            decision="write_factor_audit_log",
+            reason="factor_audit.enabled=true",
+            output_summary=str(output_dir / "factor_audit_log.csv"),
+        )
     generate_run_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     generate_run_html_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
     _audit(
@@ -270,6 +309,7 @@ def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, co
         scoring_config=config.scoring,
         portfolio_config=config.portfolio,
         data_quality_config=config.data_quality,
+        point_in_time_config=config.point_in_time,
     )
     result = engine.run()
     generate_backtest_report(output_dir, config, config_path or DEFAULT_CONFIG_PATH)
@@ -309,6 +349,76 @@ def run_backtest(data_dir: Path, output_dir: Path, cash: float | None = None, co
         f"wrote outputs to {output_dir}"
     )
     return output_dir / "backtest_equity_curve.csv"
+
+
+def explain_score(data_dir: Path, output_dir: Path, symbol: str, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("explain")
+    scores_path = output_dir / "scores.csv"
+    audit_path = output_dir / "factor_audit_log.csv"
+    if not scores_path.exists() or not audit_path.exists():
+        print("Missing scores.csv or factor_audit_log.csv; run run-score first.")
+        raise SystemExit(1)
+    with scores_path.open(newline="", encoding="utf-8-sig") as fh:
+        scores = list(csv.DictReader(fh))
+    with audit_path.open(newline="", encoding="utf-8-sig") as fh:
+        audit_rows = [row for row in csv.DictReader(fh) if row.get("symbol") == symbol]
+    score = next((row for row in scores if row.get("symbol") == symbol), None)
+    if score is None:
+        print(f"Symbol {symbol} not found in scores.csv")
+        raise SystemExit(1)
+    positives = sorted(audit_rows, key=lambda row: float(row.get("weighted_score") or 0), reverse=True)[:5]
+    negatives = sorted(audit_rows, key=lambda row: float(row.get("weighted_score") or 0))[:5]
+    red_flags = [row for row in audit_rows if row.get("factor_group") == "risk" and row.get("severity") == "error"]
+    lines = [
+        f"# Score Explanation: {symbol}",
+        "",
+        f"- Composite score: {score.get('composite_score', '')}",
+        f"- Quality score: {score.get('quality_score', '')}",
+        f"- Moat score: {score.get('moat_score', '')}",
+        f"- Valuation score: {score.get('valuation_score', '')}",
+        f"- Risk score: {score.get('risk_score', '')}",
+        f"- Red flag blocked: {score.get('blocked', '')}",
+        "",
+        "## Top Positive Factors",
+        "",
+        *[f"- {row['factor_group']}.{row['factor_name']}: {row['weighted_score']} ({row['reason']})" for row in positives],
+        "",
+        "## Top Negative Factors",
+        "",
+        *[f"- {row['factor_group']}.{row['factor_name']}: {row['weighted_score']} ({row['reason']})" for row in negatives],
+        "",
+        "## Red Flag Reasons",
+        "",
+        *(["- None"] if not red_flags else [f"- {row['reason']}" for row in red_flags]),
+        "",
+        "## Valuation Explanation",
+        "",
+        *[f"- {row['factor_name']}: {row['reason']}" for row in audit_rows if row.get("factor_group") == "valuation"],
+        "",
+        "## Moat Proxy Explanation",
+        "",
+        *[f"- {row['factor_name']}: {row['reason']}" for row in audit_rows if row.get("factor_group") == "moat"],
+        "",
+        "## Safety Statement",
+        "",
+        "No real-money trading is supported. No real broker connection exists. No real network data source connection exists. This system is for personal research, system development, paper trading, and backtest simulation only. It does not provide investment advice and does not guarantee returns.",
+    ]
+    output_path = output_dir / f"explain_{symbol}.md"
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="explain_score",
+        symbol=symbol,
+        decision_type="explain_factor",
+        decision="generate_explain_score",
+        reason="single stock explanation requested",
+        output_summary=str(output_path),
+    )
+    print(f"Wrote score explanation to {output_path}")
+    return output_path
 
 
 def generate_report(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> tuple[Path, Path]:
@@ -362,6 +472,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     quality = subparsers.add_parser("check-data-quality", help="Validate local sample CSV data quality and write a report.")
     _add_config_arg(quality)
+    schema = subparsers.add_parser("validate-schema", help="Validate local CSV schema and write a report.")
+    _add_config_arg(schema)
     score = subparsers.add_parser("run-score", help="Generate ranked stock scores from local sample CSV data.")
     _add_config_arg(score)
     portfolio = subparsers.add_parser("build-portfolio", help="Generate a target portfolio from local sample CSV data.")
@@ -376,6 +488,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(report)
     notify = subparsers.add_parser("notify-summary", help="Generate dry-run notification summary files.")
     _add_config_arg(notify)
+    explain = subparsers.add_parser("explain-score", help="Explain one stock score from scores.csv and factor_audit_log.csv.")
+    _add_config_arg(explain)
+    explain.add_argument("--symbol", required=True)
     return parser
 
 
@@ -392,9 +507,13 @@ def main(argv: list[str] | None = None) -> None:
         run_backtest(args.data_dir, args.output_dir, args.cash, config_path=args.config)
     elif args.command == "check-data-quality":
         check_data_quality(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "validate-schema":
+        validate_schema(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "generate-report":
         generate_report(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "notify-summary":
         notify_summary(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "explain-score":
+        explain_score(args.data_dir, args.output_dir, args.symbol, config_path=args.config)
     else:
         parser.error(f"unknown command: {args.command}")

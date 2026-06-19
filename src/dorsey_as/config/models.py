@@ -82,6 +82,49 @@ class AuditConfig:
 
 
 @dataclass
+class DataSourceConfig:
+    mode: str = "local_csv"
+    provider: str = "sample_csv"
+    allow_network: bool = False
+    require_point_in_time: bool = True
+    require_disclosure_date: bool = True
+    trading_calendar_path: str = "data/sample/trading_calendar.csv"
+    stock_basic_path: str = "data/sample/stock_basic.csv"
+    financial_snapshot_path: str = "data/sample/financial_snapshot.csv"
+    market_snapshot_path: str = "data/sample/market_snapshot.csv"
+    historical_market_snapshot_path: str = "data/sample/historical_market_snapshot.csv"
+
+
+@dataclass
+class PointInTimeConfig:
+    enabled: bool = True
+    as_of_date: str = "2026-06-14"
+    exclude_undisclosed_financials: bool = True
+    block_on_future_disclosure: bool = True
+    max_financial_lag_days: int = 540
+
+
+@dataclass
+class FactorAuditConfig:
+    enabled: bool = True
+    include_component_scores: bool = True
+    include_raw_inputs: bool = True
+    include_normalized_values: bool = True
+    include_red_flag_reasons: bool = True
+    include_moat_proxy_reasons: bool = True
+    include_valuation_reasons: bool = True
+
+
+@dataclass
+class SchemaValidationConfig:
+    enabled: bool = True
+    block_on_missing_required_columns: bool = True
+    block_on_invalid_numeric_fields: bool = True
+    block_on_duplicate_keys: bool = True
+    warn_on_extra_columns: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -91,3 +134,7 @@ class AppConfig:
     report: ReportConfig = field(default_factory=ReportConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    data_source: DataSourceConfig = field(default_factory=DataSourceConfig)
+    point_in_time: PointInTimeConfig = field(default_factory=PointInTimeConfig)
+    factor_audit: FactorAuditConfig = field(default_factory=FactorAuditConfig)
+    schema_validation: SchemaValidationConfig = field(default_factory=SchemaValidationConfig)

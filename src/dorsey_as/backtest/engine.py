@@ -15,7 +15,7 @@ from dorsey_as.backtest.models import (
     TradeValidation,
     TradingCalendarEntry,
 )
-from dorsey_as.config.models import DataQualityConfig, PortfolioConfig, ScoringConfig
+from dorsey_as.config.models import DataQualityConfig, PointInTimeConfig, PortfolioConfig, ScoringConfig
 from dorsey_as.data.loaders import (
     load_financial_snapshots,
     load_historical_market_snapshots,
@@ -23,8 +23,9 @@ from dorsey_as.data.loaders import (
     load_trading_calendar,
 )
 from dorsey_as.data_quality.report import write_data_quality_report
-from dorsey_as.data_quality.validators import filter_financials_as_of, run_data_quality_checks
+from dorsey_as.data_quality.validators import run_data_quality_checks
 from dorsey_as.models import MarketSnapshot, PortfolioPosition, TargetPortfolio
+from dorsey_as.point_in_time import build_point_in_time_snapshot
 from dorsey_as.portfolio.constructor import build_target_portfolio
 from dorsey_as.scoring import calculate_scores
 
@@ -41,6 +42,7 @@ class BacktestEngine:
         scoring_config: ScoringConfig | None = None,
         portfolio_config: PortfolioConfig | None = None,
         data_quality_config: DataQualityConfig | None = None,
+        point_in_time_config: PointInTimeConfig | None = None,
     ) -> None:
         self.config = config
         self.stocks = stocks or {}
@@ -51,6 +53,7 @@ class BacktestEngine:
         self.scoring_config = scoring_config
         self.portfolio_config = portfolio_config
         self.data_quality_config = data_quality_config
+        self.point_in_time_config = point_in_time_config or PointInTimeConfig()
         self.cash = config.initial_cash
         self.positions: dict[str, float] = {}
         self.cost_basis: dict[str, float] = {}
@@ -68,6 +71,7 @@ class BacktestEngine:
         scoring_config: ScoringConfig | None = None,
         portfolio_config: PortfolioConfig | None = None,
         data_quality_config: DataQualityConfig | None = None,
+        point_in_time_config: PointInTimeConfig | None = None,
     ) -> "BacktestEngine":
         return cls(
             config=config or BacktestConfig(),
@@ -79,6 +83,7 @@ class BacktestEngine:
             scoring_config=scoring_config,
             portfolio_config=portfolio_config,
             data_quality_config=data_quality_config,
+            point_in_time_config=point_in_time_config,
         )
 
     def validate_trade(self, request: TradeRequest, snapshot: HistoricalMarketSnapshot) -> TradeValidation:
@@ -182,7 +187,18 @@ class BacktestEngine:
             )
             for symbol, snapshot in market_by_symbol.items()
         }
-        scores = calculate_scores(self.stocks, filter_financials_as_of(self.financials, as_of_date), market_snapshots, scoring_config=self.scoring_config)
+        pit = build_point_in_time_snapshot(self.financials, as_of_date, self.point_in_time_config, self.output_dir)
+        if self.output_dir is not None:
+            self.audit_log.append(
+                {
+                    "trade_date": trade_date,
+                    "event": "point_in_time_snapshot",
+                    "passed": True,
+                    "blocking_issues": 0,
+                    "warnings": pit.future_disclosure_count + pit.missing_disclosure_count,
+                }
+            )
+        scores = calculate_scores(self.stocks, pit.visible_financials, market_snapshots, scoring_config=self.scoring_config)
         target = build_target_portfolio(scores, self.stocks, portfolio_config=self.portfolio_config)
         self._execute_target_portfolio(trade_date, target, market_by_symbol)
 

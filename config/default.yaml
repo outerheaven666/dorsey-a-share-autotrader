@@ -60,3 +60,38 @@ audit:
   include_backtest_decisions: true
   include_rejected_trades: true
   include_data_quality_issues: true
+
+data_source:
+  mode: local_csv
+  provider: sample_csv
+  allow_network: false
+  require_point_in_time: true
+  require_disclosure_date: true
+  trading_calendar_path: data/sample/trading_calendar.csv
+  stock_basic_path: data/sample/stock_basic.csv
+  financial_snapshot_path: data/sample/financial_snapshot.csv
+  market_snapshot_path: data/sample/market_snapshot.csv
+  historical_market_snapshot_path: data/sample/historical_market_snapshot.csv
+
+point_in_time:
+  enabled: true
+  as_of_date: 2026-06-14
+  exclude_undisclosed_financials: true
+  block_on_future_disclosure: true
+  max_financial_lag_days: 540
+
+factor_audit:
+  enabled: true
+  include_component_scores: true
+  include_raw_inputs: true
+  include_normalized_values: true
+  include_red_flag_reasons: true
+  include_moat_proxy_reasons: true
+  include_valuation_reasons: true
+
+schema_validation:
+  enabled: true
+  block_on_missing_required_columns: true
+  block_on_invalid_numeric_fields: true
+  block_on_duplicate_keys: true
+  warn_on_extra_columns: true

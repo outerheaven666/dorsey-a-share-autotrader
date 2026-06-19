@@ -53,6 +53,10 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
     scores = top_rows(output_dir / "scores.csv", 10)
     portfolio = read_csv_rows(output_dir / "target_portfolio.csv")
     trades = read_csv_rows(output_dir / "paper_trades.csv")
+    schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
+    pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
+    factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
+    manifest_rows = read_csv_rows(output_dir / "data_source_manifest.csv")
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
     body = "\n".join(
@@ -62,7 +66,11 @@ def generate_run_html_report(output_dir: Path, config: AppConfig, config_path: P
             f"<p>Config file: {escape(str(config_path or 'config/default.yaml'))}</p>",
             f"<section class=\"notice\"><h2>Safety Statement</h2><p>{escape(SAFETY_TEXT)}</p></section>",
             "<section><h2>Config Summary</h2>" + _config_summary(config) + "</section>",
+            f"<section><h2>Data Source Summary</h2><p>Manifest rows: {len(manifest_rows)}. Mode is local_csv only; network access is disabled.</p></section>",
             f"<section><h2>Data Quality Check Result</h2><p>Blocking issues: {blocking_count}; warnings: {warning_count}</p></section>",
+            f"<section><h2>Schema Validation Summary</h2><p>Rows: {len(schema_rows)}; failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}; warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}</p></section>",
+            f"<section><h2>Point-in-Time Summary</h2><p>Snapshot rows: {len(pit_rows)}; visible rows: {sum(1 for row in pit_rows if row.get('visible') == 'True')}; future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}</p></section>",
+            f"<section><h2>Factor Audit Summary</h2><p>Rows: {len(factor_rows)}; risk blocks: {sum(1 for row in factor_rows if row.get('factor_group') == 'risk' and row.get('severity') == 'error')}</p></section>",
             "<section><h2>Top 10 Stock Scores</h2>"
             + _table(["symbol", "composite", "quality", "moat", "valuation", "risk"], [[row.get("symbol", ""), row.get("composite_score", ""), row.get("quality_score", ""), row.get("moat_score", ""), row.get("valuation_score", ""), row.get("risk_score", "")] for row in scores])
             + "</section>",
@@ -86,6 +94,9 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
     trades = read_csv_rows(output_dir / "backtest_trades.csv")
     audit = read_csv_rows(output_dir / "backtest_audit_log.csv")
     quality = read_csv_rows(output_dir / "data_quality_report.csv")
+    schema_rows = read_csv_rows(output_dir / "schema_validation_report.csv")
+    pit_rows = read_csv_rows(output_dir / "point_in_time_snapshot.csv")
+    factor_rows = read_csv_rows(output_dir / "factor_audit_log.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -113,6 +124,9 @@ def generate_backtest_html_report(output_dir: Path, config: AppConfig, config_pa
             + _table(["symbol", "quantity", "price", "market_value"], [[row.get("symbol", ""), row.get("quantity", ""), row.get("price", ""), row.get("market_value", "")] for row in final_holdings])
             + "</section>",
             f"<section><h2>Data Quality Summary</h2><p>Warning count: {warning_count}; blocking issue count: {blocking_count}; report rows: {len(quality)}</p></section>",
+            f"<section><h2>Point-in-Time Summary</h2><p>Snapshot rows: {len(pit_rows)}; future disclosure exclusions: {sum(1 for row in pit_rows if row.get('reason') == 'future_disclosure')}</p></section>",
+            f"<section><h2>Schema Validation Summary</h2><p>Failures: {sum(1 for row in schema_rows if row.get('status') == 'fail')}; warnings: {sum(1 for row in schema_rows if row.get('severity') == 'warning')}</p></section>",
+            f"<section><h2>Factor Audit Summary</h2><p>Rows: {len(factor_rows)}</p></section>",
             f"<section><h2>Audit Log Summary</h2><p>Audit rows: {len(audit)}</p></section>",
             "<section><h2>Current Limitations</h2><p>Local sample CSV only. Static charts. No real trading or broker integration.</p></section>",
         ]
