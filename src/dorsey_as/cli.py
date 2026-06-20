@@ -40,6 +40,18 @@ from dorsey_as.safety.report import (
     write_simulated_live_request_report,
     write_simulated_live_request_summary,
 )
+from dorsey_as.system_health.checks import evaluate_system_health
+from dorsey_as.system_health.release import build_release_checklist, build_release_notes_draft
+from dorsey_as.system_health.report import (
+    write_artifact_manifest,
+    write_release_checklist,
+    write_release_notes,
+    write_sensitive_scan_report,
+    write_sensitive_scan_summary,
+    write_system_health_report,
+    write_system_health_summary,
+)
+from dorsey_as.system_health.scanner import scan_sensitive_content
 
 
 def _write_scores(path: Path, scores: list[ScoreResult]) -> None:
@@ -780,6 +792,10 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         f"- allow_live_trading: {str(config.execution_policy.allow_live_trading).lower()}",
         f"- allow_real_broker: {str(config.execution_policy.allow_real_broker).lower()}",
         f"- allow_real_network_data: {str(config.execution_policy.allow_real_network_data).lower()}",
+        f"- System health enabled: {str(config.system_health.enabled).lower()}",
+        f"- Release checklist enabled: {str(config.release_checklist.enabled).lower()}",
+        f"- Sensitive scan enabled: {str(config.sensitive_scan.enabled).lower()}",
+        f"- Release version: {config.system_health.release_version}",
         "",
         "## Why There Is No Real Provider",
         "",
@@ -796,6 +812,7 @@ def explain_provider(data_dir: Path, output_dir: Path, config_path: Path | None 
         "- Pass schema versioning and contract diff checks before any adapter can be considered.",
         "- Pass validate-provider-contract, diff-provider-contract, validate-schema-migration, generate-contract-diff-html, point-in-time checks, schema validation, and factor audit checks.",
         "- Pass the pre-live safety gate before any future real provider can be reviewed.",
+        "- Pass system health, sensitive scan, and release checklist checks before a release candidate can be reviewed.",
         "- Keep network and real-provider paths disabled by default until a later explicitly approved milestone.",
         "",
         "## Field Deprecation Lifecycle",
@@ -969,6 +986,129 @@ def simulate_live_request(data_dir: Path, output_dir: Path, config_path: Path | 
     return report_path
 
 
+def system_health(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("system-health")
+    result = evaluate_system_health(config, output_dir)
+    report_path = write_system_health_report(result, output_dir)
+    summary_path = write_system_health_summary(result, config, output_dir)
+    manifest_csv, manifest_md = write_artifact_manifest(output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="system_health",
+        decision_type="run_system_health",
+        decision="allow" if result.passed else "block",
+        reason=f"blocking={len(result.blocking_issues)}, warnings={len(result.warnings)}",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="info" if result.passed else "error",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="artifact_manifest",
+        decision_type="generate_artifact_manifest",
+        decision="generate",
+        reason="output artifact manifest generated",
+        output_summary=f"{manifest_csv}; {manifest_md}",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="system_health",
+        decision_type="allow_release_candidate" if result.passed else "block_release_candidate",
+        decision="candidate_checked",
+        reason=f"release_version={config.system_health.release_version}",
+        severity="info" if result.passed else "error",
+    )
+    print(f"System health complete: blocking={len(result.blocking_issues)}; wrote report to {report_path}")
+    if result.blocking_issues:
+        raise SystemExit(1)
+    return report_path
+
+
+def scan_sensitive_content_cli(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("sensitive-scan")
+    result = scan_sensitive_content(config)
+    report_path = write_sensitive_scan_report(result, output_dir)
+    summary_path = write_sensitive_scan_summary(result, config, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="sensitive_scan",
+        decision_type="scan_sensitive_content",
+        decision="allow" if result.passed else "block",
+        reason=f"blocking={len(result.blocking_findings)}, warnings={len(result.warnings)}",
+        output_summary=f"{report_path}; {summary_path}",
+        severity="info" if result.passed else "error",
+    )
+    print(f"Sensitive scan complete: blocking={len(result.blocking_findings)}; wrote report to {report_path}")
+    if result.blocking_findings:
+        raise SystemExit(1)
+    return report_path
+
+
+def release_checklist(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("release-checklist")
+    health = evaluate_system_health(config, output_dir)
+    write_system_health_report(health, output_dir)
+    write_system_health_summary(health, config, output_dir)
+    items = build_release_checklist(config, health, output_dir)
+    csv_path, md_path = write_release_checklist(items, config, output_dir)
+    manifest_csv, manifest_md = write_artifact_manifest(output_dir)
+    blocking = [item for item in items if item.blocking]
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="release_checklist",
+        decision_type="generate_release_checklist",
+        decision="allow" if not blocking else "block",
+        reason=f"blocking={len(blocking)}, release_version={config.release_checklist.release_version}",
+        output_summary=f"{csv_path}; {md_path}",
+        severity="info" if not blocking else "error",
+    )
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="artifact_manifest",
+        decision_type="check_output_artifacts",
+        decision="generate",
+        reason="release checklist refreshed output artifact manifest",
+        output_summary=f"{manifest_csv}; {manifest_md}",
+    )
+    print(f"Release checklist complete: blocking={len(blocking)}; wrote checklist to {csv_path}")
+    if blocking:
+        raise SystemExit(1)
+    return csv_path
+
+
+def generate_release_notes(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> Path:
+    config = load_config(config_path)
+    run_id = new_run_id("release-notes")
+    draft = build_release_notes_draft(config)
+    output_path = write_release_notes(draft, output_dir)
+    _audit(
+        output_dir,
+        config,
+        run_id=run_id,
+        stage="release_notes",
+        decision_type="generate_release_notes",
+        decision="generate",
+        reason=f"release_version={draft.release_version}",
+        output_summary=str(output_path),
+    )
+    print(f"Wrote release notes draft to {output_path}")
+    return output_path
+
+
 def _add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", type=Path, default=None, help="Path to YAML config file. Defaults to config/default.yaml.")
 
@@ -1003,6 +1143,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(safety_explain)
     live_sim = subparsers.add_parser("simulate-live-request", help="Simulate and block a live trading request.")
     _add_config_arg(live_sim)
+    health = subparsers.add_parser("system-health", help="Run local system health checks and write release candidate reports.")
+    _add_config_arg(health)
+    sensitive = subparsers.add_parser("scan-sensitive-content", help="Scan local project files for credential-like strings and forbidden real SDK imports.")
+    _add_config_arg(sensitive)
+    release = subparsers.add_parser("release-checklist", help="Generate a local release checklist without committing, tagging, or publishing.")
+    _add_config_arg(release)
+    notes = subparsers.add_parser("generate-release-notes", help="Generate a local release notes draft.")
+    _add_config_arg(notes)
     provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
     _add_config_arg(provider_contract)
     contract_diff = subparsers.add_parser("diff-provider-contract", help="Diff baseline and candidate provider schema contracts.")
@@ -1044,6 +1192,14 @@ def main(argv: list[str] | None = None) -> None:
         explain_safety(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "simulate-live-request":
         simulate_live_request(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "system-health":
+        system_health(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "scan-sensitive-content":
+        scan_sensitive_content_cli(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "release-checklist":
+        release_checklist(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "generate-release-notes":
+        generate_release_notes(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-provider-contract":
         validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "diff-provider-contract":

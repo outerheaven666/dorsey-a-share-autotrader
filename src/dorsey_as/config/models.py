@@ -256,6 +256,64 @@ class ExecutionPolicyConfig:
 
 
 @dataclass
+class SystemHealthConfig:
+    enabled: bool = True
+    output_dir: str = "data/output"
+    release_version: str = "v0.11.0"
+    require_clean_worktree: bool = False
+    check_gitignore_outputs: bool = True
+    check_sensitive_patterns: bool = True
+    check_forbidden_imports: bool = True
+    check_forbidden_keywords: bool = True
+    check_config_safety_flags: bool = True
+    check_required_cli_outputs: bool = True
+    check_reports_exist: bool = True
+    check_mock_provider_only: bool = True
+    check_no_live_trading: bool = True
+    check_no_real_broker: bool = True
+    check_no_real_network_data: bool = True
+
+
+@dataclass
+class ReleaseChecklistConfig:
+    enabled: bool = True
+    output_dir: str = "data/output"
+    release_version: str = "v0.11.0"
+    require_pytest_passed: bool = True
+    require_health_check_passed: bool = True
+    require_pre_live_safety_passed: bool = True
+    require_contract_diff_passed: bool = True
+    require_schema_migration_passed: bool = True
+    require_provider_contract_passed: bool = True
+    require_data_quality_passed: bool = True
+    require_backtest_passed: bool = True
+    require_reports_generated: bool = True
+    require_no_sensitive_strings: bool = True
+    require_no_data_output_tracked: bool = True
+    generate_release_notes: bool = True
+
+
+@dataclass
+class SensitiveScanConfig:
+    enabled: bool = True
+    scan_paths: list[str] = field(default_factory=lambda: ["README.md", "config", "data/fixtures", "src", "tests"])
+    forbidden_patterns: list[str] = field(
+        default_factory=lambda: [
+            "token=",
+            "secret=",
+            "password=",
+            "webhook_url=",
+            "credential=",
+            "broker_password",
+            "access_key",
+            "api_key",
+        ]
+    )
+    forbidden_provider_keywords: list[str] = field(default_factory=lambda: ["AkShare", "Tushare", "Wind", "Choice", "JQData", "QMT", "PTrade"])
+    allow_documentation_mentions: bool = True
+
+
+@dataclass
 class AppConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
@@ -279,3 +337,6 @@ class AppConfig:
     contract_visualization: ContractVisualizationConfig = field(default_factory=ContractVisualizationConfig)
     pre_live_safety: PreLiveSafetyConfig = field(default_factory=PreLiveSafetyConfig)
     execution_policy: ExecutionPolicyConfig = field(default_factory=ExecutionPolicyConfig)
+    system_health: SystemHealthConfig = field(default_factory=SystemHealthConfig)
+    release_checklist: ReleaseChecklistConfig = field(default_factory=ReleaseChecklistConfig)
+    sensitive_scan: SensitiveScanConfig = field(default_factory=SensitiveScanConfig)

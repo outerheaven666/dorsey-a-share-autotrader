@@ -10,6 +10,7 @@ from dorsey_as.data_source.schema import validate_csv_schema
 from dorsey_as.factors.audit import write_factor_audit_log
 from dorsey_as.point_in_time import build_point_in_time_snapshot
 from dorsey_as.scoring import calculate_scores
+from safety_scan_helpers import assert_no_real_provider_or_broker_integration
 
 
 def test_schema_validation_passes_default_sample_csv(tmp_path: Path) -> None:
@@ -143,7 +144,4 @@ def test_reports_include_point_in_time_and_factor_audit_summary(tmp_path: Path) 
 
 
 def test_no_real_network_or_broker_source_keywords_in_src() -> None:
-    source_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in Path("src").rglob("*.py"))
-    forbidden = ["akshare", "tushare", "wind", "choice", "joinquant", "jqdatasdk", "qmt", "ptrade"]
-    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
-    assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url="])
+    assert_no_real_provider_or_broker_integration([Path("src")])

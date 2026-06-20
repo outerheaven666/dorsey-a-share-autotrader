@@ -18,6 +18,7 @@ from dorsey_as.cli import (
 from dorsey_as.config.loader import load_config
 from dorsey_as.schema_migration.loader import load_migration_plan
 from dorsey_as.schema_migration.validator import build_compatibility_matrix, validate_migration_plan
+from safety_scan_helpers import assert_no_real_provider_or_broker_integration
 
 
 def test_migration_yaml_can_load() -> None:
@@ -163,12 +164,4 @@ def test_run_score_and_backtest_still_use_local_csv(tmp_path: Path) -> None:
 
 
 def test_no_real_network_or_secret_keywords_in_mvp9_text_sources() -> None:
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore")
-        for root in [Path("src"), Path("config"), Path("data/fixtures")]
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix in {".py", ".yaml", ".md", ".csv"}
-    )
-    forbidden = ["akshare", "tushare", "wind", "choice", "jqdata", "joinquant", "qmt", "ptrade"]
-    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
-    assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url=", "credential="])
+    assert_no_real_provider_or_broker_integration([Path("src"), Path("config"), Path("data/fixtures")])

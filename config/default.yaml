@@ -213,3 +213,64 @@ execution_policy:
   allow_backtest: true
   allow_local_csv: true
   allow_mock_provider: true
+
+system_health:
+  enabled: true
+  output_dir: data/output
+  release_version: v0.11.0
+  require_clean_worktree: false
+  check_gitignore_outputs: true
+  check_sensitive_patterns: true
+  check_forbidden_imports: true
+  check_forbidden_keywords: true
+  check_config_safety_flags: true
+  check_required_cli_outputs: true
+  check_reports_exist: true
+  check_mock_provider_only: true
+  check_no_live_trading: true
+  check_no_real_broker: true
+  check_no_real_network_data: true
+
+release_checklist:
+  enabled: true
+  output_dir: data/output
+  release_version: v0.11.0
+  require_pytest_passed: true
+  require_health_check_passed: true
+  require_pre_live_safety_passed: true
+  require_contract_diff_passed: true
+  require_schema_migration_passed: true
+  require_provider_contract_passed: true
+  require_data_quality_passed: true
+  require_backtest_passed: true
+  require_reports_generated: true
+  require_no_sensitive_strings: true
+  require_no_data_output_tracked: true
+  generate_release_notes: true
+
+sensitive_scan:
+  enabled: true
+  scan_paths:
+    - README.md
+    - config
+    - data/fixtures
+    - src
+    - tests
+  forbidden_patterns:
+    - token=
+    - secret=
+    - password=
+    - webhook_url=
+    - credential=
+    - broker_password
+    - access_key
+    - api_key
+  forbidden_provider_keywords:
+    - AkShare
+    - Tushare
+    - Wind
+    - Choice
+    - JQData
+    - QMT
+    - PTrade
+  allow_documentation_mentions: true

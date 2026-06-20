@@ -24,10 +24,13 @@ from dorsey_as.config.models import (
     ProviderTestsConfig,
     ProviderTemplatesConfig,
     ReportConfig,
+    ReleaseChecklistConfig,
     SchemaValidationConfig,
     SchemaMigrationConfig,
     SchemaVersioningConfig,
     ScoringConfig,
+    SensitiveScanConfig,
+    SystemHealthConfig,
     TransactionCostConfig,
 )
 
@@ -131,6 +134,9 @@ def load_config(path: Path | str | None = None) -> AppConfig:
         contract_visualization=_section(ContractVisualizationConfig, raw.get("contract_visualization")),
         pre_live_safety=_section(PreLiveSafetyConfig, raw.get("pre_live_safety")),
         execution_policy=_section(ExecutionPolicyConfig, raw.get("execution_policy")),
+        system_health=_section(SystemHealthConfig, raw.get("system_health")),
+        release_checklist=_section(ReleaseChecklistConfig, raw.get("release_checklist")),
+        sensitive_scan=_section(SensitiveScanConfig, raw.get("sensitive_scan")),
     )
     validate_config(config)
     return config
@@ -219,3 +225,17 @@ def validate_config(config: AppConfig) -> None:
         raise ConfigError("pre_live_safety.block_real_broker must remain true in this MVP.")
     if not config.pre_live_safety.block_real_network_provider:
         raise ConfigError("pre_live_safety.block_real_network_provider must remain true in this MVP.")
+    if config.system_health.release_version != config.release_checklist.release_version:
+        raise ConfigError("system_health.release_version must match release_checklist.release_version.")
+    if config.system_health.release_version != "v0.11.0":
+        raise ConfigError("system_health.release_version must be v0.11.0 in this MVP.")
+    if config.release_checklist.release_version != "v0.11.0":
+        raise ConfigError("release_checklist.release_version must be v0.11.0 in this MVP.")
+    if not config.system_health.check_no_live_trading:
+        raise ConfigError("system_health.check_no_live_trading must remain true in this MVP.")
+    if not config.system_health.check_no_real_broker:
+        raise ConfigError("system_health.check_no_real_broker must remain true in this MVP.")
+    if not config.system_health.check_no_real_network_data:
+        raise ConfigError("system_health.check_no_real_network_data must remain true in this MVP.")
+    if not config.sensitive_scan.scan_paths:
+        raise ConfigError("sensitive_scan.scan_paths must not be empty.")

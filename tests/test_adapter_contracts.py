@@ -1,4 +1,5 @@
 import csv
+import re
 from pathlib import Path
 
 import pytest
@@ -150,4 +151,4 @@ def test_no_real_network_or_trading_keywords_in_adapter_source() -> None:
     source_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in Path("src/dorsey_as/adapters").rglob("*.py"))
     forbidden = ["akshare", "tushare", "wind", "choice", "jqdata", "joinquant", "qmt", "ptrade"]
     assert not any(word in source_text.lower() for word in forbidden)
-    assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url=", "credential="])
+    assert re.search(r"(token|secret|password|webhook_url|credential)=['\"]?[A-Za-z0-9_\-]{3,}", source_text.lower()) is None

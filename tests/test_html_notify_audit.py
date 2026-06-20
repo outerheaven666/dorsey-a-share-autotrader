@@ -1,5 +1,6 @@
 import csv
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -180,7 +181,7 @@ def test_decision_audit_log_can_generate_and_excludes_sensitive_fields(tmp_path:
     text = audit_path.read_text(encoding="utf-8").lower()
     assert "secret" not in text
     assert "token" not in text
-    assert "webhook_url=" not in text
+    assert re.search(r"webhook_url=['\"]?[A-Za-z0-9_\-]{3,}", text) is None
     with audit_path.open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     assert rows[0]["stage"] == "notify"

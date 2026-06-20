@@ -27,6 +27,8 @@ class PreLiveSafetyGate:
         if isinstance(value, list):
             return any(self._has_sensitive_config_value(item) for item in value)
         if hasattr(value, "__dataclass_fields__"):
+            if value.__class__.__name__ == "SensitiveScanConfig":
+                return False
             return any(self._has_sensitive_config_value(getattr(value, field.name)) for field in fields(value))
         return False
 

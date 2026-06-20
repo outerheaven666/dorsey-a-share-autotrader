@@ -50,6 +50,8 @@ def _summary_markdown(payload: dict[str, object]) -> str:
             f"- Generated at: {payload['generated_at']}",
             f"- Phase: {payload['phase']}",
             f"- Channel: {payload['channel']}",
+            "- Mode: dry-run" if payload["dry_run"] else "- Mode: send",
+            "- This notification summary is dry-run only." if payload["dry_run"] else "- Notification sending requested by configuration.",
             f"- Dry run: {payload['dry_run']}",
             f"- Would send: {payload['would_send']}",
             f"- Data quality blocking issues: {payload['data_quality_blocking_issues']}",
