@@ -8,6 +8,7 @@ from dorsey_as.adapters.execution import MockExecutionAdapter
 from dorsey_as.ledger.replay import RuntimeReplayValidator
 from dorsey_as.ledger.runtime_ledger import RuntimeLedger
 from dorsey_as.portfolio.portfolio_engine import PortfolioEngine
+from dorsey_as.reporting.runtime_report import RuntimeReportWriter
 from dorsey_as.risk.risk_engine import RiskEngine
 from dorsey_as.strategy.strategy_engine import StrategyEngine
 
@@ -35,6 +36,7 @@ class RuntimeEngine:
         execution_adapter: MockExecutionAdapter | None = None,
         runtime_ledger: RuntimeLedger | None = None,
         replay_validator: RuntimeReplayValidator | None = None,
+        report_writer: RuntimeReportWriter | None = None,
         output_dir: str | Path = "data/output",
     ) -> None:
         self.market_data_provider = market_data_provider or MockMarketDataProvider()
@@ -44,6 +46,7 @@ class RuntimeEngine:
         self.execution_adapter = execution_adapter or MockExecutionAdapter()
         self.runtime_ledger = runtime_ledger or RuntimeLedger()
         self.replay_validator = replay_validator or RuntimeReplayValidator()
+        self.report_writer = report_writer or RuntimeReportWriter()
         self.output_dir = output_dir
 
     def run_once(self, print_output: bool = True) -> dict[str, Any]:
@@ -69,6 +72,7 @@ class RuntimeEngine:
             "valid": replay["valid"],
             "summary": replay["summary"],
         }
+        result["report"] = self.report_writer.write(result, output_dir=self.output_dir)
         if print_output:
             print(json.dumps(result, ensure_ascii=False))
         return result
