@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from pathlib import Path
 
 from dorsey_as.adapters.validation import validate_provider_contract
@@ -18,6 +19,8 @@ from dorsey_as.data_source.schema import validate_csv_schema
 from dorsey_as.data_quality.report import write_data_quality_report
 from dorsey_as.data_quality.validators import run_data_quality_checks
 from dorsey_as.factors.audit import write_factor_audit_log
+from dorsey_as.engine.artifact_validation import RuntimeArtifactValidator
+from dorsey_as.engine.runtime import RuntimeEngine
 from dorsey_as.models import ScoreResult, TargetPortfolio
 from dorsey_as.notify.summary import generate_notify_summary
 from dorsey_as.point_in_time import build_point_in_time_snapshot
@@ -1109,6 +1112,20 @@ def generate_release_notes(data_dir: Path, output_dir: Path, config_path: Path |
     return output_path
 
 
+def run_runtime(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> dict:
+    load_config(config_path)
+    result = RuntimeEngine(output_dir=output_dir).run_once(print_output=False)
+    print(json.dumps(result, ensure_ascii=False))
+    return result
+
+
+def validate_runtime_artifacts(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> dict:
+    load_config(config_path)
+    result = RuntimeArtifactValidator().validate(output_dir=output_dir)
+    print(json.dumps(result, ensure_ascii=False))
+    return result
+
+
 def _add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", type=Path, default=None, help="Path to YAML config file. Defaults to config/default.yaml.")
 
@@ -1151,6 +1168,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(release)
     notes = subparsers.add_parser("generate-release-notes", help="Generate a local release notes draft.")
     _add_config_arg(notes)
+    runtime = subparsers.add_parser("run-runtime", help="Run the mock-only runtime pipeline once and print JSON output.")
+    _add_config_arg(runtime)
+    runtime_validation = subparsers.add_parser("validate-runtime-artifacts", help="Validate local mock runtime ledger and report artifacts.")
+    _add_config_arg(runtime_validation)
     provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
     _add_config_arg(provider_contract)
     contract_diff = subparsers.add_parser("diff-provider-contract", help="Diff baseline and candidate provider schema contracts.")
@@ -1200,6 +1221,10 @@ def main(argv: list[str] | None = None) -> None:
         release_checklist(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "generate-release-notes":
         generate_release_notes(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "run-runtime":
+        run_runtime(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "validate-runtime-artifacts":
+        validate_runtime_artifacts(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-provider-contract":
         validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "diff-provider-contract":
