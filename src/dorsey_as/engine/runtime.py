@@ -49,8 +49,8 @@ class RuntimeEngine:
         self.report_writer = report_writer or RuntimeReportWriter()
         self.output_dir = output_dir
 
-    def run_once(self, print_output: bool = True) -> dict[str, Any]:
-        market_data = self.market_data_provider.get_latest()
+    def run_once(self, optional_market_data: list[dict[str, Any]] | None = None, print_output: bool = True) -> dict[str, Any]:
+        market_data = optional_market_data if optional_market_data is not None else self.market_data_provider.get_latest()
         strategy_results = [self._evaluate_symbol(row) for row in market_data]
         portfolio = self.portfolio_engine.evaluate(strategy_results)
         risk = self.risk_engine.evaluate(portfolio)

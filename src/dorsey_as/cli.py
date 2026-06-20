@@ -32,6 +32,7 @@ from dorsey_as.schema_migration.report import write_schema_migration_report, wri
 from dorsey_as.schema_migration.validator import build_compatibility_matrix, validate_migration_plan
 from dorsey_as.schema_migration.visualization import generate_contract_diff_visualization
 from dorsey_as.scoring import calculate_scores
+from dorsey_as.scenarios.scenario_runner import RuntimeScenarioRunner
 from dorsey_as.schema_versioning.diff import diff_contracts
 from dorsey_as.schema_versioning.loader import load_provider_contract
 from dorsey_as.schema_versioning.report import write_contract_diff_report, write_contract_diff_summary
@@ -1126,6 +1127,13 @@ def validate_runtime_artifacts(data_dir: Path, output_dir: Path, config_path: Pa
     return result
 
 
+def run_runtime_scenarios(data_dir: Path, output_dir: Path, config_path: Path | None = None) -> dict:
+    load_config(config_path)
+    result = RuntimeScenarioRunner().run_all(output_dir=output_dir)
+    print(json.dumps(result, ensure_ascii=False))
+    return result
+
+
 def _add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", type=Path, default=None, help="Path to YAML config file. Defaults to config/default.yaml.")
 
@@ -1172,6 +1180,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_config_arg(runtime)
     runtime_validation = subparsers.add_parser("validate-runtime-artifacts", help="Validate local mock runtime ledger and report artifacts.")
     _add_config_arg(runtime_validation)
+    runtime_scenarios = subparsers.add_parser("run-runtime-scenarios", help="Run deterministic mock runtime scenario matrix.")
+    _add_config_arg(runtime_scenarios)
     provider_contract = subparsers.add_parser("validate-provider-contract", help="Validate mock provider adapter contract fixtures.")
     _add_config_arg(provider_contract)
     contract_diff = subparsers.add_parser("diff-provider-contract", help="Diff baseline and candidate provider schema contracts.")
@@ -1225,6 +1235,8 @@ def main(argv: list[str] | None = None) -> None:
         run_runtime(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-runtime-artifacts":
         validate_runtime_artifacts(args.data_dir, args.output_dir, config_path=args.config)
+    elif args.command == "run-runtime-scenarios":
+        run_runtime_scenarios(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "validate-provider-contract":
         validate_provider_contract_cli(args.data_dir, args.output_dir, config_path=args.config)
     elif args.command == "diff-provider-contract":
