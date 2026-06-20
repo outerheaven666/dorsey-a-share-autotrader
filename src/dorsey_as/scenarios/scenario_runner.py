@@ -4,11 +4,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from dorsey_as.engine.runtime import RuntimeEngine
+from dorsey_as.scenarios.scenario_report import ScenarioReportWriter
 from dorsey_as.scenarios.runtime_scenarios import RUNTIME_SCENARIOS
 
 
 class RuntimeScenarioRunner:
     """Runs deterministic mock runtime scenarios against the existing runtime flow."""
+
+    def __init__(self, report_writer: ScenarioReportWriter | None = None) -> None:
+        self.report_writer = report_writer or ScenarioReportWriter()
 
     def run_all(self, output_dir: str | Path = "data/output") -> dict[str, Any]:
         scenario_results = []
@@ -29,7 +33,7 @@ class RuntimeScenarioRunner:
 
         passed = sum(1 for row in scenario_results if row["passed"])
         total = len(scenario_results)
-        return {
+        result = {
             "scenario_results": scenario_results,
             "summary": {
                 "total": total,
@@ -38,6 +42,8 @@ class RuntimeScenarioRunner:
                 "mode": "mock",
             },
         }
+        result["report"] = self.report_writer.write(result, output_dir=output_dir)
+        return result
 
     def _checks_for(self, name: str, runtime_result: dict[str, Any]) -> list[dict[str, Any]]:
         checks: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
