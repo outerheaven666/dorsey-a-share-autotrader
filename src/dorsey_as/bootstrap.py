@@ -1,6 +1,8 @@
 from dorsey_as.adapters.plugin_registry import AdapterPluginRegistry
 from dorsey_as.adapters.mock_provider import MockAShareProvider
 from dorsey_as.config.loader import load_config
+from dorsey_as.engine.runtime import RuntimeEngine
+from dorsey_as.engine.signal_engine import SignalEngine
 
 
 class SystemBootstrap:
@@ -58,6 +60,7 @@ class SystemBootstrap:
         print("[BOOTSTRAP] OK - mock-only system started")
         print("[BOOTSTRAP] plugins loaded")
         print("[BOOTSTRAP] safety check passed")
+        RuntimeEngine(signal_engine=SignalEngine()).run_once()
 
 
 def main():
