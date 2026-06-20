@@ -12,7 +12,8 @@ SAFETY_BOUNDARY = (
     "has no real broker connection, has no real network data source connection, and is only for personal research, "
     "system development, paper/backtest simulation, and dry-run notification. Mock provider is only for contract tests. "
     "Real provider template is disabled-by-default and non-executable. Schema migration metadata is only for pre-integration checks. "
-    "Pre-live safety gate blocks live trading, real broker, real order, and real network data by default."
+    "Pre-live safety gate blocks live trading, real broker, real order, and real network data by default. "
+    "System health and release checklist only generate local reports and never commit, tag, push, or publish automatically."
 )
 
 
@@ -67,6 +68,7 @@ def write_safety_explanation(config: AppConfig, output_dir: Path) -> Path:
         "# Safety Explanation",
         "",
         "The current system remains research-only because live trading, real broker access, real orders, and real network data are explicitly disabled by configuration and blocked by the pre-live safety gate.",
+        f"Release candidate version: {config.system_health.release_version}. System health, release checklist, and sensitive scan are enabled as local-only pre-release guardrails.",
         "",
         "## Allowed",
         "",
@@ -75,6 +77,14 @@ def write_safety_explanation(config: AppConfig, output_dir: Path) -> Path:
         f"- paper trading simulation: {config.execution_policy.allow_paper_trading}",
         f"- backtest simulation: {config.execution_policy.allow_backtest}",
         f"- dry-run notification: {config.execution_policy.allow_dry_run_notify}",
+        "",
+        "## Release Candidate Guardrails",
+        "",
+        f"- system health enabled: {config.system_health.enabled}",
+        f"- release checklist enabled: {config.release_checklist.enabled}",
+        f"- sensitive scan enabled: {config.sensitive_scan.enabled}",
+        f"- release_version: {config.system_health.release_version}",
+        "- manual steps still required: run validation commands, inspect git status, create PR, merge PR, pull main, final validation, tag, push tag",
         "",
         "## Forbidden",
         "",

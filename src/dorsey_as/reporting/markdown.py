@@ -16,7 +16,8 @@ SAFETY_TEXT = (
     "Mock provider is only used for contract testing and is not an actual market data source. "
     "Real provider template is disabled-by-default and non-executable. "
     "Schema migration metadata is only for pre-integration checks and does not participate in trading decisions. "
-    "Pre-live safety gate blocks live trading, real broker, real order, and real network data by default."
+    "Pre-live safety gate blocks live trading, real broker, real order, and real network data by default. "
+    "System health and release checklist only generate local reports; they do not publish, tag, push, or release automatically."
 )
 
 
@@ -46,6 +47,10 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
     safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
+    health_rows = read_csv_rows(output_dir / "system_health_report.csv")
+    checklist_rows = read_csv_rows(output_dir / "release_checklist.csv")
+    sensitive_rows = read_csv_rows(output_dir / "sensitive_scan_report.csv")
+    artifact_rows = read_csv_rows(output_dir / "output_artifact_manifest.csv")
     visual_exists = (output_dir / "provider_contract_diff.html").exists()
     blocking_count = sum(1 for row in quality_rows if row.get("blocking") == "True")
     warning_count = sum(1 for row in quality_rows if row.get("severity") == "warning")
@@ -114,6 +119,17 @@ def generate_run_report(output_dir: Path, config: AppConfig, config_path: Path |
         f"- Backtest allowed: {config.execution_policy.allow_backtest}",
         f"- Safety acknowledgement status: {'configured' if config.pre_live_safety.safety_ack_phrase else 'missing'}",
         f"- Safety gate rows: {len(safety_rows)}",
+        "",
+        "## System Health And Release Summary",
+        "",
+        f"- Release version: {config.system_health.release_version}",
+        f"- System health rows: {len(health_rows)}",
+        f"- System health blocking issues: {sum(1 for row in health_rows if row.get('blocking') == 'True')}",
+        f"- Release checklist rows: {len(checklist_rows)}",
+        f"- Release checklist blocking issues: {sum(1 for row in checklist_rows if row.get('blocking') == 'True')}",
+        f"- Sensitive scan findings: {len(sensitive_rows)}",
+        f"- Sensitive scan blocking findings: {sum(1 for row in sensitive_rows if row.get('blocking') == 'True')}",
+        f"- Artifact manifest rows: {len(artifact_rows)}",
         "",
         "## Schema Validation Summary",
         "",
@@ -190,6 +206,7 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
     contract_diff_rows = read_csv_rows(output_dir / "provider_contract_diff_report.csv")
     migration_rows = read_csv_rows(output_dir / "schema_migration_report.csv")
     safety_rows = read_csv_rows(output_dir / "pre_live_safety_report.csv")
+    health_rows = read_csv_rows(output_dir / "system_health_report.csv")
     final_holdings = latest_rows_by_date(output_dir / "backtest_holdings.csv", "trade_date")
     skipped = Counter(row.get("reason", "") for row in trades if row.get("status") == "SKIPPED")
     start_date = equity[0]["trade_date"] if equity else ""
@@ -233,6 +250,9 @@ def generate_backtest_report(output_dir: Path, config: AppConfig, config_path: P
         f"- Migration target version: {config.schema_migration.target_version}",
         "- migration metadata does not participate in trading decisions; it is a data-integration readiness check.",
         f"- Execution policy mode: {config.execution_policy.mode}",
+        f"- Current release candidate version: {config.system_health.release_version}",
+        f"- System health rows: {len(health_rows)}",
+        f"- System health blocking issues: {sum(1 for row in health_rows if row.get('blocking') == 'True')}",
         "- Current system has no live trading, no real broker, no real orders, and no real network data.",
         f"- Pre-live safety rows: {len(safety_rows)}",
         "",

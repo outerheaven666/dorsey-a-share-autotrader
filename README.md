@@ -1,196 +1,314 @@
 # Dorsey A-Share Autotrader
 
-A-share low-frequency rules-based automated trading system based on Pat Dorsey's fundamental investing framework.
+Research-only A-share low-frequency fundamental quant system inspired by Pat Dorsey's moat framework.
 
-Current phase: **MVP 10 / Pre-Live Safety Gate**.
+This project is not an investment advisory product. It does not guarantee returns. It does not support real trading. It has no real broker connection and no real network data source connection. It is only for personal research, system development, local CSV scoring, paper trading simulation, backtest simulation, dry-run notification, and adapter contract testing.
 
-This project does **not** perform real-money trading. It only reads local sample CSV files, local fixture CSV files, validates schemas, validates adapter and schema migration contracts, renders local static reports, builds point-in-time visible datasets, checks data quality, builds scores and target portfolios, runs paper broker simulation, runs local quarterly backtests, generates reports, writes dry-run notification summaries, and records local audit logs.
+Mock provider is only used for contract tests and is not an actual market data source. The real provider template is disabled by default, non-executable, and never connects to external systems. Schema migration metadata is only for data integration readiness checks and does not participate in trading decisions. Pre-live safety gate blocks live trading, real broker, real order, and real network data by default. System health and release checklist only generate local reports; they do not commit, tag, push, publish, or create releases automatically.
 
-## Safety Statement
+## Install
 
-This system is for personal research, system development, paper trading, and backtest simulation only.
+```bash
+python -m pip install -e .
+python -m pip install pytest
+```
 
-It does not provide investment advice. It does not guarantee returns. It does not support real trading. It has no real broker connection. It has no real network data source connection. It has no real broker credentials and no live order placement path.
+Python 3.11 or higher is expected.
 
-`MockAShareProvider` is not an actual market data source. It reads fake local fixture CSV files and exists only to test future adapter contracts. The real provider template is disabled by default, non-executable, not registered, and will not connect to real providers. Schema migration metadata is used only for data-integration readiness checks and does not participate in trading decisions. The pre-live safety gate blocks live trading, real broker access, real orders, and real network data by default.
+## Sample Data
+
+Default local CSV files live under `data/sample/`:
+
+- `stock_basic.csv`
+- `financial_snapshot.csv`
+- `market_snapshot.csv`
+- `historical_market_snapshot.csv`
+- `trading_calendar.csv`
+- `data_quality_cases.csv`
+
+Backtest, paper trading, report, health, and release outputs are written to `data/output/`, which is ignored by git.
 
 ## Configuration
 
-Default configuration:
+Default config:
 
-```text
+```bash
 config/default.yaml
 ```
 
-MVP 10 adds:
+Key sections:
 
-* `pre_live_safety`: research-only default mode, allowed/forbidden modes, required pre-checks, manual acknowledgement phrase, and hard blockers for live trading, real broker, real order, and real network data.
-* `execution_policy`: current execution mode and explicit allow flags for local CSV, mock provider, paper trading, backtest, dry-run notification, live trading, real broker, real orders, and real network data.
+- `scoring`: quality, moat, valuation, and risk weights.
+- `portfolio`: max positions, single-stock weight, industry cap, cash reserve.
+- `transaction_cost`: commission, minimum commission, stamp duty, slippage.
+- `backtest`: initial cash, frequency, benchmark placeholder, risk-free rate.
+- `data_quality`: stale data and blocking behavior.
+- `data_source`: local CSV paths; `mode` is `local_csv` and network is disabled.
+- `point_in_time`: as-of-date and disclosure-date rules.
+- `adapter_contract`: mock-only provider contract tests.
+- `schema_versioning`: contract versioning and baseline/candidate diff paths.
+- `schema_migration`: migration metadata, deprecation lifecycle, compatibility window.
+- `pre_live_safety`: safety gate and acknowledgement controls.
+- `execution_policy`: research-only execution permissions.
+- `system_health`: v0.11.0 health check settings.
+- `release_checklist`: local release candidate checklist settings.
+- `sensitive_scan`: credential-like string and forbidden SDK import scanning.
 
-Critical defaults:
-
-```text
-execution_policy.mode = research_only
-allow_live_trading = false
-allow_real_broker = false
-allow_real_orders = false
-allow_real_network_data = false
-pre_live_safety.block_live_trading = true
-pre_live_safety.block_real_broker = true
-pre_live_safety.block_real_network_provider = true
-```
-
-No API token, password, secret, webhook, account, or paid data source credential is stored in the repository.
-
-## Pre-Live Safety Gate
-
-Run:
+All commands accept:
 
 ```bash
-python -m dorsey_as check-pre-live-safety --config config/default.yaml
+--config config/default.yaml
+```
+
+## Core CLI
+
+```bash
+python -m dorsey_as validate-schema --config config/default.yaml
+python -m dorsey_as check-data-quality --config config/default.yaml
+python -m dorsey_as run-score --config config/default.yaml
+python -m dorsey_as build-portfolio --config config/default.yaml
+python -m dorsey_as paper-rebalance --config config/default.yaml
+python -m dorsey_as run-backtest --config config/default.yaml
+python -m dorsey_as generate-report --config config/default.yaml
+python -m dorsey_as notify-summary --config config/default.yaml
+```
+
+`notify-summary` is dry-run by default. It writes local summary files and does not send network notifications unless a later explicitly approved milestone changes that boundary.
+
+## Point-in-Time And Data Quality
+
+Financial data must respect `disclosure_date <= as_of_date`. If a report belongs to the past but was disclosed after the current `as_of_date`, it is not visible at that point in time and must not be used for scoring or backtesting.
+
+Useful commands:
+
+```bash
+python -m dorsey_as validate-schema --config config/default.yaml
+python -m dorsey_as check-data-quality --config config/default.yaml
 ```
 
 Outputs:
 
-```text
-data/output/pre_live_safety_report.csv
-data/output/pre_live_safety_summary.md
-```
+- `data/output/schema_validation_report.csv`
+- `data/output/data_quality_report.csv`
+- `data/output/point_in_time_snapshot.csv`
 
-`pre_live_safety_report.csv` fields:
+## Factor Audit And Explain Score
 
-```text
-gate,check_type,status,severity,blocking,message
-```
-
-The safety gate checks:
-
-* execution policy mode
-* live trading flag
-* real broker flag
-* real order flag
-* real network data flag
-* schema validation readiness
-* provider contract validation readiness
-* contract diff readiness
-* schema migration readiness
-* data quality readiness
-* point-in-time readiness
-* factor audit readiness
-* backtest-before-paper policy
-* paper-before-live policy
-* safety acknowledgement phrase
-* credential-like assignment strings
-
-Default research-only configuration passes the safety gate while clearly showing that live trading is blocked.
-
-## Execution Policy
-
-Allowed in the current phase:
-
-* local CSV
-* mock provider contract tests
-* paper trading simulation
-* backtest simulation
-* dry-run notification
-
-Forbidden in the current phase:
-
-* live trading
-* real broker connections
-* real order placement
-* real network data providers
-
-## Safety Acknowledgement
-
-The configured acknowledgement phrase is:
-
-```text
-I understand this system is research-only and live trading is disabled
-```
-
-This is local metadata only. It does not enable live trading.
-
-## Explain Safety
-
-Run:
+Scoring writes factor-level audit data so composite score decisions can be traced back to quality, moat, valuation, risk, and red-flag reasons.
 
 ```bash
+python -m dorsey_as run-score --config config/default.yaml
+python -m dorsey_as explain-score --symbol 600519.SH --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/scores.csv`
+- `data/output/factor_audit_log.csv`
+- `data/output/explain_600519.SH.md`
+
+## Adapter Contract Layer
+
+MVP 7 added a mock-only adapter contract layer for future A-share data provider readiness. It defines the provider contract, fixture mapping, field normalization, schema validation, and point-in-time compatibility checks.
+
+Current provider status:
+
+- Local CSV sample path is the default production path.
+- `MockAShareProvider` only reads fake local fixtures.
+- Real network data sources such as AkShare, Tushare, Wind, Choice, JQData, Tonghuashun, JoinQuant, QMT, and PTrade are not connected.
+- Real provider names are rejected by the registry.
+
+Commands:
+
+```bash
+python -m dorsey_as validate-provider-contract --config config/default.yaml
+python -m dorsey_as explain-provider --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/provider_contract_report.csv`
+- `data/output/provider_contract_summary.md`
+- `data/output/adapter_mapped_preview.csv`
+- `data/output/provider_explanation.md`
+
+## Schema Versioning And Contract Diff
+
+MVP 8 added schema contract YAML files and diff reporting:
+
+- `config/schemas/provider_contract_v1.yaml`
+- `config/schemas/provider_contract_candidate.yaml`
+
+Change classes:
+
+- Breaking: required field deletion, required field type change, primary key change, dataset deletion, date/numeric/boolean semantic break.
+- Additive: new optional field, documented extra field, non-breaking dataset addition.
+- Compatible: optional metadata or compatible alias changes that do not block current readers.
+
+Command:
+
+```bash
+python -m dorsey_as diff-provider-contract --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/provider_contract_diff_report.csv`
+- `data/output/provider_contract_diff_summary.md`
+
+## Schema Migration Metadata
+
+MVP 9 added schema migration metadata, deprecation lifecycle, compatibility windows, and static contract diff visualization.
+
+Default migration plan:
+
+```bash
+config/schema_migrations/v1_to_v1_1.yaml
+```
+
+Commands:
+
+```bash
+python -m dorsey_as validate-schema-migration --config config/default.yaml
+python -m dorsey_as generate-contract-diff-html --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/schema_migration_report.csv`
+- `data/output/schema_migration_summary.md`
+- `data/output/provider_contract_diff.html`
+- `data/output/provider_contract_diff_visual_summary.md`
+
+Migration metadata is explanatory and pre-integration oriented. It does not participate in trading decisions.
+
+## Pre-Live Safety Gate
+
+MVP 10 added a pre-live safety gate. Default execution mode is `research_only`.
+
+Allowed by default:
+
+- local CSV
+- mock provider contract tests
+- backtest simulation
+- paper trading simulation
+- dry-run notification
+
+Blocked by default:
+
+- live trading
+- real broker
+- real orders
+- real network data
+
+Commands:
+
+```bash
+python -m dorsey_as check-pre-live-safety --config config/default.yaml
 python -m dorsey_as explain-safety --config config/default.yaml
-```
-
-Output:
-
-```text
-data/output/safety_explanation.md
-```
-
-The explanation states why the system remains research-only, which features are allowed, which features are forbidden, why live trading and real data are blocked, the manual confirmation phrase, and which pre-checks would be required before any future real provider or broker review.
-
-## Simulate Live Request
-
-Run:
-
-```bash
 python -m dorsey_as simulate-live-request --config config/default.yaml
 ```
 
 Outputs:
 
-```text
-data/output/simulated_live_request_report.csv
-data/output/simulated_live_request_summary.md
-```
+- `data/output/pre_live_safety_report.csv`
+- `data/output/pre_live_safety_summary.md`
+- `data/output/safety_explanation.md`
+- `data/output/simulated_live_request_report.csv`
+- `data/output/simulated_live_request_summary.md`
 
-`simulated_live_request_report.csv` fields:
+The simulated live request is intentionally blocked and never creates a real order.
 
-```text
-request_type,requested_mode,allowed,blocked,reason,safety_gate
-```
+## MVP 11 System Health Check
 
-This command simulates a live/real-broker/real-order request only. It creates no real order, connects to no broker, performs no network request, and is blocked by the safety gate.
+MVP 11 fixes the project as a v0.11.0 release candidate with local system health checks, sensitive content scanning, artifact manifest generation, release checklist, and release notes draft.
 
-## Schema Migration And Contract Diff
+System health checks:
 
-Existing MVP 8 commands remain:
+- `config/default.yaml` exists.
+- `README.md` exists.
+- `data/output/` is ignored by git.
+- execution policy disables live trading, real broker, real orders, and real network data.
+- pre-live safety blocks live trading, real broker, and real network provider.
+- adapter contract remains mock-only.
+- disabled provider template is not registered.
+- no credential-like assignment is present.
+- no real provider SDK import is present.
+- required output artifacts are listed in the artifact manifest.
+- release notes include the safety boundary.
 
-```bash
-python -m dorsey_as validate-schema-migration --config config/default.yaml
-python -m dorsey_as diff-provider-contract --config config/default.yaml
-python -m dorsey_as generate-contract-diff-html --config config/default.yaml
-```
+Sensitive scan checks:
 
-These checks validate local YAML metadata only. Schema migration metadata and contract diff visualization do not participate in trading decisions.
+- credential-like assignments such as token, secret, password, webhook URL, credential, broker password, access key, and API key patterns.
+- forbidden real provider SDK imports.
+- documentation-only mentions of provider names are allowed when used to explain disabled boundaries.
 
-## Adapter Contract Layer
-
-The only implemented provider is:
-
-```text
-MockAShareProvider
-```
-
-It reads fake local fixtures from:
-
-```text
-data/fixtures/mock_provider/
-```
-
-`MockAShareProvider` is not used by `run-score` or `run-backtest`. It is only used by `validate-provider-contract`.
-
-## Disabled Real Provider Template
-
-The template lives at:
-
-```text
-src/dorsey_as/adapters/templates/real_provider_template.py
-```
-
-It is disabled by default, non-executable, not registered, not reachable from CLI, and contains no real SDK import, endpoint, credential, or network path.
-
-## CLI Usage
+Commands:
 
 ```bash
+python -m dorsey_as system-health --config config/default.yaml
+python -m dorsey_as scan-sensitive-content --config config/default.yaml
+python -m dorsey_as release-checklist --config config/default.yaml
+python -m dorsey_as generate-release-notes --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/system_health_report.csv`
+- `data/output/system_health_summary.md`
+- `data/output/sensitive_scan_report.csv`
+- `data/output/sensitive_scan_summary.md`
+- `data/output/output_artifact_manifest.csv`
+- `data/output/output_artifact_manifest.md`
+- `data/output/release_checklist.csv`
+- `data/output/release_checklist.md`
+- `data/output/release_notes_v0.11.0.md`
+
+Output artifact manifest fields:
+
+- `artifact`
+- `expected`
+- `exists`
+- `generated_by`
+- `tracked_by_git`
+- `note`
+
+Release checklist fields:
+
+- `item`
+- `required`
+- `status`
+- `blocking`
+- `evidence`
+- `message`
+
+## Reports
+
+Markdown and HTML reports:
+
+```bash
+python -m dorsey_as generate-report --config config/default.yaml
+```
+
+Outputs:
+
+- `data/output/run_report.md`
+- `data/output/run_report.html`
+- `data/output/backtest_report.md`
+- `data/output/backtest_report.html`
+
+Reports include strategy summaries, backtest summaries, safety statements, data quality summaries, point-in-time summaries, factor audit summaries, schema migration summaries, contract diff summaries, pre-live safety summaries, and MVP 11 system health/release checklist summaries.
+
+## Validation
+
+Full local validation sequence:
+
+```bash
+python -m pytest
+python -m dorsey_as system-health --config config/default.yaml
+python -m dorsey_as scan-sensitive-content --config config/default.yaml
+python -m dorsey_as release-checklist --config config/default.yaml
+python -m dorsey_as generate-release-notes --config config/default.yaml
 python -m dorsey_as check-pre-live-safety --config config/default.yaml
 python -m dorsey_as explain-safety --config config/default.yaml
 python -m dorsey_as simulate-live-request --config config/default.yaml
@@ -208,102 +326,38 @@ python -m dorsey_as generate-report --config config/default.yaml
 python -m dorsey_as notify-summary --config config/default.yaml
 ```
 
-## Reports
+## v0.11.0 Release Candidate Flow
 
-Markdown and HTML reports are written to:
+Manual release steps:
 
-```text
-data/output/run_report.md
-data/output/backtest_report.md
-data/output/run_report.html
-data/output/backtest_report.html
-```
+1. Run validation commands.
+2. Inspect git status.
+3. Create PR.
+4. Merge PR.
+5. Pull main.
+6. Run final validation.
+7. `git tag v0.11.0`
+8. `git push origin v0.11.0`
 
-MVP 10 reports include:
-
-* pre-live safety summary
-* execution policy mode
-* live trading blocked status
-* real broker blocked status
-* real network data blocked status
-* dry-run notification status
-* paper/backtest status
-* safety acknowledgement status
-* statement that the system has no live trading, no real broker, no real orders, and no real network data
-
-## Audit Logs
-
-Output:
-
-```text
-data/output/decision_audit_log.csv
-```
-
-MVP 10 adds stages:
-
-* `pre_live_safety`
-* `execution_policy`
-* `safety_acknowledgement`
-* `simulated_live_request`
-
-MVP 10 adds decision types:
-
-* `evaluate_safety_gate`
-* `block_live_trading`
-* `block_real_broker`
-* `block_real_order`
-* `block_real_network_data`
-* `validate_safety_ack`
-* `simulate_live_request`
-* `allow_research_only`
-* `allow_paper_mode`
-* `allow_backtest_mode`
-* `allow_dry_run_notify`
-
-Audit logs are sanitized and must not contain tokens, secrets, passwords, credentials, webhook URLs, real account data, or real broker information.
-
-## Why No Real Data Source Or Broker Yet
-
-Future real providers or brokers must first pass:
-
-* pre-live safety gate
-* validate-provider-contract
-* diff-provider-contract
-* validate-schema-migration
-* generate-contract-diff-html
-* point-in-time checks
-* schema validation
-* data quality checks
-* factor audit checks
-* backtest before paper
-* paper before any future live review
-
-Even then, real providers and real brokers remain disabled until a later explicitly approved milestone. No real trading path exists.
+The project CLI does not perform these git or GitHub actions automatically.
 
 ## Current Limitations
 
-* Only local sample CSV data is used by scoring and backtesting.
-* Mock provider reads fake local fixtures only.
-* Contract diff, migration, and safety checks are local metadata checks.
-* Pre-live safety gate is a local dry-run guard.
-* No real network data source is implemented.
-* No paid data source is implemented.
-* No real broker integration exists.
-* No live trading mode exists.
-* Backtest data is quarterly sample data, not a full daily A-share database.
+- Local sample CSV and fake fixtures only.
+- No real broker credentials.
+- No real broker connection.
+- No real order path.
+- No real network data source.
+- No live trading mode.
+- Mock provider is only for adapter contract tests.
+- Reports are static local files.
+- Health and release checklist are local pre-release guardrails, not production monitoring.
+- Strategy logic is deterministic and intentionally simple.
 
-## Next Phase
+## Next Stage Suggestions
 
-Recommended Phase 11 work:
-
-1. Add richer safety checklist dashboards.
-2. Add immutable audit snapshots for release candidates.
-3. Add manual review packet generation.
-4. Add read-only provider dry-run harness with local fixtures only.
-5. Add stronger reconciliation checks before any future broker design.
-
-## Disclaimer
-
-This project is for personal research and system development only.
-
-It does not provide investment advice, does not guarantee returns, does not support real-money trading, has no real broker connection, has no real network data source connection, and only supports paper trading and backtest simulation. Mock provider is only used for contract testing and is not an actual market data source. Real provider template is disabled by default, non-executable, and will not connect to real providers. Schema migration metadata is used only for pre-integration checks and does not participate in trading decisions. Pre-live safety gate blocks live trading, real broker, real order, and real network data by default.
+- Add richer fixture coverage for data vendor schema drift.
+- Add CI workflow that runs the validation command set without secrets.
+- Add signed artifact checksums for `data/output/` reports.
+- Add benchmark comparison while keeping local-only sample data.
+- Only consider real provider design after contract, schema, migration, point-in-time, data quality, factor audit, pre-live safety, and release health gates are fully reviewed in a later explicitly approved milestone.

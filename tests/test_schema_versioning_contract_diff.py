@@ -9,6 +9,7 @@ from dorsey_as.cli import diff_provider_contract_cli, explain_provider, generate
 from dorsey_as.config.loader import load_config
 from dorsey_as.schema_versioning.diff import diff_contracts
 from dorsey_as.schema_versioning.loader import load_provider_contract
+from safety_scan_helpers import assert_no_real_provider_or_broker_integration
 
 
 def test_provider_contract_v1_can_load() -> None:
@@ -143,12 +144,4 @@ def test_reports_include_schema_versioning_and_contract_diff(tmp_path: Path) -> 
 
 
 def test_no_real_network_or_secret_keywords_in_mvp8_source() -> None:
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore")
-        for root in [Path("src"), Path("config/schemas"), Path("data/fixtures")]
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix in {".py", ".yaml", ".md", ".csv"}
-    )
-    forbidden = ["akshare", "tushare", "wind", "choice", "jqdata", "joinquant", "qmt", "ptrade"]
-    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
-    assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url=", "credential="])
+    assert_no_real_provider_or_broker_integration([Path("src"), Path("config/schemas"), Path("data/fixtures")])

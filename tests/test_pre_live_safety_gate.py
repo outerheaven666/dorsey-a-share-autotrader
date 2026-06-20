@@ -14,6 +14,7 @@ from dorsey_as.cli import (
 )
 from dorsey_as.config.loader import load_config
 from dorsey_as.safety.gates import PreLiveSafetyGate
+from safety_scan_helpers import assert_no_real_provider_or_broker_integration
 
 
 def test_default_execution_policy_is_research_only_and_blocks_real_paths() -> None:
@@ -146,12 +147,4 @@ def test_decision_audit_contains_pre_live_safety_and_execution_policy(tmp_path: 
 
 
 def test_no_real_network_or_secret_keywords_in_safety_sources() -> None:
-    source_text = "\n".join(
-        path.read_text(encoding="utf-8", errors="ignore")
-        for root in [Path("src"), Path("config"), Path("data/fixtures")]
-        for path in root.rglob("*")
-        if path.is_file() and path.suffix in {".py", ".yaml", ".md", ".csv"}
-    )
-    forbidden = ["akshare", "tushare", "wind", "choice", "jqdata", "joinquant", "qmt", "ptrade"]
-    assert not any(re.search(rf"\b{re.escape(word)}\b", source_text.lower()) for word in forbidden)
-    assert not any(word in source_text.lower() for word in ["token=", "secret=", "password=", "webhook_url=", "credential="])
+    assert_no_real_provider_or_broker_integration([Path("src"), Path("config"), Path("data/fixtures")])
