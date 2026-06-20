@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from dorsey_as.adapters.execution import MockExecutionAdapter
+from dorsey_as.ledger.replay import RuntimeReplayValidator
 from dorsey_as.ledger.runtime_ledger import RuntimeLedger
 from dorsey_as.portfolio.portfolio_engine import PortfolioEngine
 from dorsey_as.risk.risk_engine import RiskEngine
@@ -33,6 +34,7 @@ class RuntimeEngine:
         risk_engine: RiskEngine | None = None,
         execution_adapter: MockExecutionAdapter | None = None,
         runtime_ledger: RuntimeLedger | None = None,
+        replay_validator: RuntimeReplayValidator | None = None,
         output_dir: str | Path = "data/output",
     ) -> None:
         self.market_data_provider = market_data_provider or MockMarketDataProvider()
@@ -41,6 +43,7 @@ class RuntimeEngine:
         self.risk_engine = risk_engine or RiskEngine()
         self.execution_adapter = execution_adapter or MockExecutionAdapter()
         self.runtime_ledger = runtime_ledger or RuntimeLedger()
+        self.replay_validator = replay_validator or RuntimeReplayValidator()
         self.output_dir = output_dir
 
     def run_once(self, print_output: bool = True) -> dict[str, Any]:
@@ -56,7 +59,16 @@ class RuntimeEngine:
             "risk": risk,
             "executions": executions,
         }
-        result["ledger"] = self.runtime_ledger.record(result, output_dir=self.output_dir)
+        ledger_paths = self.runtime_ledger.record(result, output_dir=self.output_dir)
+        replay = self.replay_validator.validate(
+            json_path=ledger_paths["json_path"],
+            csv_path=ledger_paths["csv_path"],
+        )
+        result["ledger"] = ledger_paths
+        result["replay"] = {
+            "valid": replay["valid"],
+            "summary": replay["summary"],
+        }
         if print_output:
             print(json.dumps(result, ensure_ascii=False))
         return result
