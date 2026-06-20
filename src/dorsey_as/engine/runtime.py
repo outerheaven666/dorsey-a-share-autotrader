@@ -5,6 +5,7 @@ from typing import Any
 
 from dorsey_as.adapters.execution import MockExecutionAdapter
 from dorsey_as.portfolio.portfolio_engine import PortfolioEngine
+from dorsey_as.risk.risk_engine import RiskEngine
 from dorsey_as.strategy.strategy_engine import StrategyEngine
 
 
@@ -27,22 +28,26 @@ class RuntimeEngine:
         market_data_provider: MockMarketDataProvider | None = None,
         strategy_engine: StrategyEngine | None = None,
         portfolio_engine: PortfolioEngine | None = None,
+        risk_engine: RiskEngine | None = None,
         execution_adapter: MockExecutionAdapter | None = None,
     ) -> None:
         self.market_data_provider = market_data_provider or MockMarketDataProvider()
         self.strategy_engine = strategy_engine or StrategyEngine()
         self.portfolio_engine = portfolio_engine or PortfolioEngine()
+        self.risk_engine = risk_engine or RiskEngine()
         self.execution_adapter = execution_adapter or MockExecutionAdapter()
 
     def run_once(self, print_output: bool = True) -> dict[str, Any]:
         market_data = self.market_data_provider.get_latest()
         strategy_results = [self._evaluate_symbol(row) for row in market_data]
         portfolio = self.portfolio_engine.evaluate(strategy_results)
-        executions = [self._execute_decision(row, market) for row, market in zip(strategy_results, market_data)]
+        risk = self.risk_engine.evaluate(portfolio)
+        executions = self._execute_if_approved(risk, strategy_results, market_data)
         result = {
             "market_data": market_data,
             "strategy_results": strategy_results,
             "portfolio": portfolio,
+            "risk": risk,
             "executions": executions,
         }
         if print_output:
@@ -57,6 +62,16 @@ class RuntimeEngine:
             "final_score": strategy_result["final_score"],
             "decision": strategy_result["decision"],
         }
+
+    def _execute_if_approved(
+        self,
+        risk: dict[str, Any],
+        strategy_results: list[dict[str, Any]],
+        market_data: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not risk.get("approved"):
+            return []
+        return [self._execute_decision(row, market) for row, market in zip(strategy_results, market_data)]
 
     def _execute_decision(self, strategy_result: dict[str, Any], market_data: dict[str, Any]) -> dict[str, Any]:
         decision = strategy_result.get("decision")
