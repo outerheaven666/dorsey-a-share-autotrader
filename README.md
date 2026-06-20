@@ -6,6 +6,13 @@ This project is not an investment advisory product. It does not guarantee return
 
 Mock provider is only used for contract tests and is not an actual market data source. The real provider template is disabled by default, non-executable, and never connects to external systems. Schema migration metadata is only for data integration readiness checks and does not participate in trading decisions. Pre-live safety gate blocks live trading, real broker, real order, and real network data by default. System health and release checklist only generate local reports; they do not commit, tag, push, publish, or create releases automatically.
 
+## Architecture Review
+
+- [v0.11.0 Architecture Review](docs/architecture/v0.11.0_architecture_review.md)
+- [v0.11.0 Capability Map](docs/architecture/v0.11.0_capability_map.md)
+- [v0.11.0 Pre-Real-Data Gap Analysis](docs/architecture/v0.11.0_pre_real_data_gap_analysis.md)
+- [v0.11.0 Stop Doing List](docs/architecture/v0.11.0_stop_doing_list.md)
+
 ## Install
 
 ```bash
